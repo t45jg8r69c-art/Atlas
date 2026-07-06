@@ -1,1 +1,131 @@
-<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0f1722"><link rel="manifest" href="manifest.json"><link rel="stylesheet" href="style.css"><title>Atlas</title></head><body><div class="app"><header><div><b>ATLAS</b><span>Decision Workspace</span></div><button id="modeBtn">Prüfzone simulieren</button></header><main><section class="hero"><div class="ok" id="status">✓ PLAN LÄUFT</div><h1 id="task">Geduld</h1><p id="answer">Keine Änderung. Der Plan ist unverändert gültig.</p><div class="bar"><div id="bar"></div></div><small id="distance">Nächste Prüfung: 44.820 · noch 180 Punkte</small></section><section class="decision hidden" id="decision"><h2>⚠ Entscheidungsbereich erreicht</h2><p>Prüfe zuerst deine ursprüngliche Analyse. Triff keine neue Entscheidung, bevor du deinen Plan gelesen hast.</p><button onclick="show('analysis')">Relevante Analyse öffnen</button></section><nav><button onclick="show('home')">Plan</button><button onclick="show('create')">Eingabe</button><button onclick="show('analysis')">Analyse</button><button onclick="show('journal')">Journal</button><button onclick="show('progress')">Entwicklung</button></nav><section id="home" class="screen active"><div class="card"><h2>Muss ich jetzt handeln?</h2><p class="big">Nein.</p><p>Der Markt liegt zwischen Einstieg und Ziel. Kein objektiver Grund für Eingriff.</p></div><details><summary>Marktdaten</summary><p>Dow Jones · Long · 2 Kontrakte<br>Einstieg 44.100 · Stop 43.780 · Ziel 45.200</p></details></section><section id="create" class="screen"><div class="card"><h2>Plan erstellen</h2><label>Markt<input value="Dow Jones"></label><label>Richtung<select><option>Long</option><option>Short</option></select></label><label>Einstieg<input value="44.100"></label><label>Ziel<input value="45.200"></label><label>Stop<input value="43.780"></label><label>Warum?<textarea>Welle IV abgeschlossen. Erwartung Welle V. Invalidierung unter 43.780.</textarea></label><button>Plan speichern</button></div></section><section id="analysis" class="screen"><div class="card"><h2>Relevante Analyse</h2><p class="quote">„Hier erwarte ich Welle V. Keine Shorts. Erst am Zielbereich Teilgewinn prüfen.“</p><div class="shots"><div>HKCM<br><span>Screenshot-Platzhalter</span></div><div>TradingView<br><span>Zone markiert</span></div></div></div><details open><summary>Warum gilt der Plan?</summary><ul><li>Welle IV abgeschlossen</li><li>Unterstützung hält</li><li>Stop nicht erweitert</li><li>Risiko bleibt 1%</li></ul></details></section><section id="journal" class="screen"><div class="card"><h2>Trading Journal</h2><p>#128 ✓ Ziel erreicht</p><p>#127 ✕ Invalidiert</p><p>#126 ✓ Teilgewinn</p><textarea placeholder="2-Minuten-Reflexion"></textarea><button>Rückblick speichern</button></div></section><section id="progress" class="screen"><div class="card"><h2>Entwicklung</h2><p class="big">87%</p><p>Regeltreue diese Woche</p><p>Brokeröffnungen: 8<br>TradingView-Aufrufe: 14<br>Stopänderungen: 0<br>Planabweichungen: 1</p></div><div class="card gold"><h2>1 Mio € Challenge</h2><p>50 × 20.000 €</p><div class="grid" id="grid"></div></div></section></main></div><script src="app.js"></script></body></html>
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Atlas</title>
+<style>
+:root{--bg:#0d1522;--card:#151f2e;--card2:#1b2638;--gold:#c8a96a;--text:#f3efe7;--muted:#97a3b8;--green:#6db68b;--blue:#24344d}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.app{max-width:980px;margin:auto;padding:18px 16px 90px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}.brand{letter-spacing:4px;color:var(--gold);font-size:26px;font-weight:800}.sub{color:var(--muted);font-size:12px}.card{background:var(--card);border:1px solid rgba(200,169,106,.18);border-radius:24px;padding:20px;margin:14px 0;box-shadow:0 12px 30px rgba(0,0,0,.18)}.soft{background:var(--card2)}.label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px}.big{font-size:32px;font-weight:800}.gold{color:var(--gold)}.green{color:var(--green)}p{color:#d8deeb;line-height:1.45}.progress{height:12px;background:#2d394c;border-radius:99px;overflow:hidden;margin:16px 0}.progress div{height:100%;width:64%;background:var(--gold)}button{width:100%;border:0;border-radius:16px;padding:15px;margin:7px 0;font-size:16px;font-weight:700;background:var(--gold);color:#101826}.secondary{background:var(--blue);color:var(--text)}.ghost{background:transparent;color:var(--gold);border:1px solid rgba(200,169,106,.4)}.grid{display:grid;grid-template-columns:1fr;gap:14px}.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.mock{height:180px;border-radius:18px;border:1px dashed #53627a;background:linear-gradient(135deg,#24344d,#0d1522);display:flex;align-items:center;justify-content:center;color:var(--muted);text-align:center}.badge{display:inline-block;background:#23344c;color:#dbeafe;border-radius:999px;padding:7px 11px;margin:4px;font-size:13px}.alert{background:rgba(200,169,106,.13);border-color:rgba(200,169,106,.5)}.hidden{display:none}.screen{display:none}.screen.active{display:block}input,select,textarea{width:100%;background:#0d1522;color:var(--text);border:1px solid #34445d;border-radius:14px;padding:13px;margin:7px 0 13px;font-size:16px}textarea{min-height:90px}.nav{position:fixed;bottom:0;left:0;right:0;background:#101826;border-top:1px solid rgba(255,255,255,.08);display:grid;grid-template-columns:repeat(5,1fr)}.nav button{background:transparent;color:var(--muted);border-radius:0;font-size:12px;padding:12px 2px;margin:0}.nav button.active{color:var(--gold)}@media(min-width:780px){.grid{grid-template-columns:1.1fr .9fr}.workspace{grid-template-columns:1fr 1fr}.nav{max-width:980px;left:50%;transform:translateX(-50%);border-radius:22px 22px 0 0}}
+</style>
+</head>
+<body>
+
+<div class="app">
+<div class="top">
+<div><div class="brand">ATLAS</div><div class="sub">Trade your Plan</div></div>
+<div class="sub">V1.9 Live</div>
+</div>
+
+<section id="plan" class="screen active">
+<div class="grid">
+<div>
+<div class="card">
+<div class="label">Status</div>
+<div class="big green">✓ Plan läuft</div>
+<p>Aktuell besteht kein Handlungsbedarf.</p>
+<div class="label">Aktuelle Aufgabe</div>
+<div class="big gold">Geduld</div>
+<div class="progress"><div></div></div>
+<p>Nächste Prüfung bei <b>44.820</b>. Bis dahin bleibt der Plan unverändert.</p>
+<button onclick="decision()">Entscheidungsmodus simulieren</button>
+<button class="secondary" onclick="show('analyse')">Analyse öffnen</button>
+</div>
+
+<div id="decisionBox" class="card alert hidden">
+<div class="label">Entscheidungsbereich erreicht</div>
+<div class="big gold">Erst Analyse prüfen</div>
+<p>Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.</p>
+<button onclick="show('analyse')">Relevante Analyse anzeigen</button>
+<button class="secondary" onclick="hideDecision()">Beim Plan bleiben</button>
+</div>
+</div>
+
+<div>
+<div class="card soft">
+<div class="label">Muss ich jetzt handeln?</div>
+<div class="big">Nein.</div>
+<p>Der Markt liegt zwischen Einstieg und Ziel. Kein objektiver Grund für Eingriff.</p>
+</div>
+<div class="card soft">
+<div class="label">Marktidee</div>
+<h2>Dow Jones · Long</h2>
+<span class="badge">Elliott-Wellen</span><span class="badge">Risiko 1%</span><span class="badge">Welle V</span>
+</div>
+</div>
+</div>
+</section>
+
+<section id="create" class="screen">
+<div class="card">
+<div class="label">Plan erstellen</div>
+<h2>Neue Marktidee</h2>
+<input placeholder="Markt z. B. Dow Jones">
+<select><option>Long</option><option>Short</option><option>Neutral</option></select>
+<input placeholder="Einstieg">
+<input placeholder="Ziel">
+<input placeholder="Stop / Invalidierung">
+<textarea placeholder="Warum diese Idee?"></textarea>
+<textarea placeholder="Was darf ich nicht tun?"></textarea>
+<button onclick="show('plan')">Plan aktivieren</button>
+</div>
+</section>
+
+<section id="analyse" class="screen">
+<div class="card">
+<div class="label">Analysis Workspace</div>
+<div class="big green">✓ Plan läuft · Geduld</div>
+<p>Hier sieht der Trader nur die Informationen, die für die aktuelle Entscheidung relevant sind.</p>
+</div>
+<div class="grid workspace">
+<div class="card"><div class="label">HKCM Analyse</div><div class="mock">HKCM Screenshot<br>Analysezone</div><p><b>Notiz:</b> Welle IV abgeschlossen. Erwartung Welle V.</p></div>
+<div class="card"><div class="label">TradingView</div><div class="mock">TradingView Screenshot<br>Prüfbereich</div><p><b>Regel:</b> Keine Shorts, solange die Invalidierung nicht verletzt ist.</p></div>
+</div>
+<div class="card soft">
+<div class="label">Warum gilt der Plan?</div>
+<span class="badge">Welle IV abgeschlossen</span><span class="badge">Welle V erwartet</span><span class="badge">Stop nicht erweitern</span><span class="badge">Erst Prüfzone bewerten</span>
+</div>
+</section>
+
+<section id="journal" class="screen">
+<div class="card">
+<div class="label">Trading Journal</div>
+<h2>2-Minuten-Rückblick</h2>
+<select><option>Plan eingehalten?</option><option>Ja</option><option>Teilweise</option><option>Nein</option></select>
+<textarea placeholder="Was war der wichtigste Moment?"></textarea>
+<textarea placeholder="Was lerne ich daraus?"></textarea>
+<button>Rückblick speichern</button>
+</div>
+</section>
+
+<section id="progress" class="screen">
+<div class="card">
+<div class="label">Entwicklung</div>
+<div class="big gold">87 % Regeltreue</div>
+<p>Dein Ziel ist nicht mehr Aktivität, sondern bessere Umsetzung.</p>
+</div>
+<div class="card soft">
+<div class="label">1 Mio € Challenge</div>
+<div class="big">3 / 50 Kästchen</div>
+<div class="progress"><div style="width:6%"></div></div>
+<p>60.000 € von 1.000.000 € erreicht.</p>
+</div>
+</section>
+</div>
+
+<div class="nav">
+<button class="active" onclick="show('plan',this)">Plan</button>
+<button onclick="show('create',this)">Eingabe</button>
+<button onclick="show('analyse',this)">Analyse</button>
+<button onclick="show('journal',this)">Journal</button>
+<button onclick="show('progress',this)">Entwicklung</button>
+</div>
+
+<script>
+function show(id,btn){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));if(btn)btn.classList.add('active');window.scrollTo(0,0)}
+function decision(){document.getElementById('decisionBox').classList.remove('hidden');window.scrollTo(0,0)}
+function hideDecision(){document.getElementById('decisionBox').classList.add('hidden')}
+</script>
+
+</body>
+</html>
