@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Atlas V4</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="app">
@@ -15,6 +15,7 @@
         <div class="tag">TRADE YOUR PLAN</div>
       </div>
       <nav id="nav" class="nav"></nav>
+      <div class="sideStatus"><div id="clock">--:--:--</div><div id="sessionStatus">Session wird geprüft...</div></div>
     </aside>
 
     <main>
@@ -42,6 +43,14 @@
               <p>Atlas blendet jetzt deine ursprüngliche Analyse ein. Erst Plan prüfen, dann handeln.</p>
             </div>
 
+            <div class="card brainCard" id="brainCard">
+              <div class="label">Atlas Gehirn</div>
+              <h2 id="coachPhase">Tradephase wird geprüft</h2>
+              <div id="coachSignal" class="coachSignal neutral">Plan prüfen</div>
+              <p id="coachText"></p>
+              <div id="coachChecklist" class="coachChecklist"></div>
+            </div>
+
             <div class="card">
               <div class="label">Analysebilder</div>
               <p>Bild antippen zum Vergrößern.</p>
@@ -63,6 +72,15 @@
               </div>
               <p id="liveStatus">Live-Daten noch nicht aktualisiert.</p>
               <button class="secondary" onclick="updateYahoo()">Yahoo-Kurs aktualisieren</button>
+            </div>
+
+            <div class="card">
+              <div class="label">Marktstatus</div>
+              <div class="stats">
+                <div class="stat"><b id="sessionBadge">–</b><br>US-Session</div>
+                <div class="stat"><b id="riskBadge">–</b><br>Risikoampel</div>
+              </div>
+              <p id="sessionText"></p>
             </div>
 
             <div class="card"><div class="label">Warum?</div><div id="whyList"></div></div>
