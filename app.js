@@ -1,97 +1,44 @@
-const tabs=[['plan','Mein Plan'],['create','Eingabe'],['journal','Journal'],['challenge','Challenge']];
+const markets=[
+ {name:'Dow Jones Future',symbol:'YM=F',pointValue:5,group:'US'},
+ {name:'Nasdaq 100 Future',symbol:'NQ=F',pointValue:20,group:'US'},
+ {name:'S&P 500 Future',symbol:'ES=F',pointValue:50,group:'US'},
+ {name:'Russell 2000 Future',symbol:'RTY=F',pointValue:50,group:'US'},
+ {name:'DAX Future',symbol:'FDAX.DE',pointValue:25,group:'EU'},
+ {name:'Gold Future',symbol:'GC=F',pointValue:100,group:'Metalle'},
+ {name:'Silber Future',symbol:'SI=F',pointValue:5000,group:'Metalle'},
+ {name:'Copper Future',symbol:'HG=F',pointValue:25000,group:'Metalle'},
+ {name:'WTI Öl Future',symbol:'CL=F',pointValue:1000,group:'Rohstoffe'},
+ {name:'Brent Öl Future',symbol:'BZ=F',pointValue:1000,group:'Rohstoffe'},
+ {name:'US Dollar Index Future',symbol:'DX=F',pointValue:1000,group:'FX'},
+ {name:'10Y Treasury Note Future',symbol:'ZN=F',pointValue:1000,group:'Bonds'},
+ {name:'Benutzerdefiniert',symbol:'',pointValue:1,group:'Custom'}
+];
 const $=id=>document.getElementById(id);
-const store={get:(k,f)=>JSON.parse(localStorage.getItem(k)||JSON.stringify(f)),set:(k,v)=>localStorage.setItem(k,JSON.stringify(v))};
-let plan=store.get('atlasPlan',{market:'Dow Jones',symbol:'^DJI',direction:'Long',contracts:'2 Kontrakte',entry:43180,target:45000,stop:42180,current:44270,zone:44420,why:'Welle IV abgeschlossen\nErwartung Welle V\nImpulsstruktur intakt\nInvalidierung unter 42.180\nZielbereich 45.000',rule:'Keine neue Entscheidung ohne objektive Strukturänderung.',hkcm:'',tv:''});
-let trades=store.get('atlasTrades',[]);
-let challenge=store.get('atlasChallenge',[]);
-function makeNav(){const html=tabs.map((t,i)=>`<button onclick="show('${t[0]}')" class="${i?'':'active'}">${t[1]}</button>`).join('');$('nav').innerHTML=html;$('bottom').innerHTML=html}
-function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');document.querySelectorAll('.nav button,.bottom button').forEach(b=>b.classList.remove('active'));document.querySelectorAll(`button[onclick="show('${id}')"]`).forEach(b=>b.classList.add('active'));scrollTo(0,0)}
-function fmt(n){return Number(n||0).toLocaleString('de-DE')}function pts(n){return(n>0?'+':'')+fmt(n)+'P'}function dist(a,b){return Math.round(Math.abs(Number(a)-Number(b)))}
-function imgHtml(src){return src?`<img src="${src}" onclick="openImg('${src}')">`:`<div class="emptyShot">Noch kein Screenshot<br>über Eingabe hinzufügen</div>`}
-function openImg(src){$('modalImg').src=src;$('imgModal').classList.add('show')}function closeImg(){$('imgModal').classList.remove('show')}
-function loadForm(){['Market','Symbol','Contracts','Entry','Target','Stop','Current','Zone','Why','Rule'].forEach(x=>{$('f'+x).value=plan[x.toLowerCase()]||''});$('fDirection').value=plan.direction;$('hkcmPreview').innerHTML=imgHtml(plan.hkcm);$('tvPreview').innerHTML=imgHtml(plan.tv)}
-
-function isLong(){return (plan.direction||'Long').toLowerCase()==='long'}
-function signedProgress(){
-  const stop=Number(plan.stop), target=Number(plan.target), current=Number(plan.current);
-  const range=Math.abs(target-stop)||1;
-  return isLong()?((current-stop)/range*100):((stop-current)/range*100);
-}
-function zoneReached(){
-  const c=Number(plan.current), z=Number(plan.zone);
-  return isLong()?c>=z:c<=z;
-}
-function invalidated(){
-  const c=Number(plan.current), s=Number(plan.stop);
-  return isLong()?c<=s:c>=s;
-}
-function targetReached(){
-  const c=Number(plan.current), t=Number(plan.target);
-  return isLong()?c>=t:c<=t;
-}
-function getCoach(){
-  const c=Number(plan.current), e=Number(plan.entry), t=Number(plan.target), st=Number(plan.stop), z=Number(plan.zone);
-  const toEntry=dist(c,e), toTarget=dist(t,c), toStop=dist(c,st), toZone=dist(z,c);
-  const checklist=[];
-  let phase='Plan läuft', signal='Nicht handeln', color='green', text='Dein Plan ist aktiv. Atlas sieht aktuell keinen Grund für eine neue Entscheidung.';
-  if(invalidated()){
-    phase='Invalidierung erreicht'; signal='Trade beenden / Plan neu prüfen'; color='red';
-    text='Der Kurs hat den Stop-/Invalidierungsbereich erreicht. Jetzt nicht hoffen, sondern Regel ausführen.';
-    checklist.push(['danger','Stop wurde erreicht oder überschritten. Keine emotionale Verlängerung.']);
-  }else if(targetReached()){
-    phase='Zielzone erreicht'; signal='Gewinn sichern nach Plan'; color='gold';
-    text='Die Zielzone wurde erreicht. Jetzt nicht gierig werden. Abschluss, Teilgewinn oder Trailing nur nach vorheriger Regel.';
-    checklist.push(['ok','Ziel wurde erreicht. Dokumentiere den Trade sauber im Journal.']);
-  }else if(zoneReached()){
-    phase='Prüfzone erreicht'; signal='Erst Analyse prüfen'; color='gold';
-    text='Du bist in der Entscheidungszone. Keine spontane Reaktion. Prüfe HKCM-Screenshot, TradingView-Bild und ursprüngliche Warum-Liste.';
-    checklist.push(['warn','Prüfzone aktiv: Nur handeln, wenn sich die Struktur objektiv verändert hat.']);
-  }else if(toEntry<=50){
-    phase='Nähe Einstieg'; signal='Nicht hinterherlaufen'; color='gold';
-    text='Der Markt ist nahe am Einstieg. Warte auf deinen Bereich. Kein FOMO-Einstieg außerhalb des Plans.';
-    checklist.push(['warn',`Nur noch ${fmt(toEntry)} Punkte bis Einstieg. Limit/Setup respektieren.`]);
-  }else if(toStop<toTarget*0.35){
-    phase='Druckphase'; signal='Ruhig bleiben'; color='gold';
-    text='Der Kurs ist näher am Stop als am Ziel. Jetzt zählt Disziplin: Keine Panik, aber auch keine Regel brechen.';
-    checklist.push(['warn',`Nur ${fmt(toStop)} Punkte bis Stop. Risiko bewusst akzeptieren oder Plan beenden.`]);
-  }
-  checklist.push(['ok',`Punkte bis Ziel: ${fmt(toTarget)}`]);
-  checklist.push(['ok',`Punkte bis Stop: ${fmt(toStop)}`]);
-  checklist.push(['ok',`Punkte bis Prüfzone: ${fmt(toZone)}`]);
-  return {phase,signal,color,text,checklist};
-}
-function updateCoach(){
-  const c=getCoach();
-  $('coachPhase').textContent=c.phase;
-  $('coachSignal').textContent=c.signal;
-  $('coachSignal').className='coachSignal '+c.color;
-  $('coachText').textContent=c.text;
-  $('coachChecklist').innerHTML=c.checklist.map(x=>`<div class="coachItem ${x[0]}">✓ ${x[1]}</div>`).join('');
-  $('riskBadge').textContent=c.color==='red'?'Rot':c.color==='gold'?'Gelb':'Grün';
-  $('riskBadge').className=c.color==='red'?'red':c.color==='gold'?'gold':'green';
-}
-function updateClockAndSession(){
-  const now=new Date();
-  if($('clock')) $('clock').textContent=now.toLocaleTimeString('de-DE');
-  const day=now.getDay();
-  const minutes=now.getHours()*60+now.getMinutes();
-  const open=day>=1&&day<=5&&minutes>=15*60+30&&minutes<22*60;
-  const pre=day>=1&&day<=5&&minutes>=10*60&&minutes<15*60+30;
-  const txt=open?'US-Markt geöffnet':pre?'Vorbörse / Vorbereitung':'US-Markt geschlossen';
-  if($('sessionStatus')) $('sessionStatus').textContent=txt;
-  if($('sessionBadge')) $('sessionBadge').textContent=open?'Offen':pre?'Pre':'Zu';
-  if($('sessionText')) $('sessionText').textContent=open?'Live-Entscheidungen nur nach Plan. Keine impulsiven Klicks.':pre?'Setups vorbereiten, aber nicht aus Langeweile handeln.':'Außerhalb der Hauptsession: Analyse, Journal, Vorbereitung.';
-}
-function render(){
-  $('marketTitle').textContent=`${plan.market} · ${plan.direction}`;$('directionLine').textContent=plan.contracts||'';$('dEntry').textContent=fmt(plan.entry);$('dTarget').textContent=fmt(plan.target);$('dStop').textContent=fmt(plan.stop);$('dCurrent').textContent=fmt(plan.current);$('sStop').textContent=fmt(plan.stop);$('sEntry').textContent=fmt(plan.entry);$('sTarget').textContent=fmt(plan.target);$('whyList').innerHTML=(plan.why||'').split('\n').filter(Boolean).map(x=>`<div class="pill">✓ ${x}</div>`).join('');$('pEntry').textContent=pts(dist(plan.current,plan.entry));$('pTarget').textContent=pts(dist(plan.target,plan.current));$('pStop').textContent=pts(dist(plan.current,plan.stop));$('pZone').textContent=pts(dist(plan.zone,plan.current));$('distanceText').textContent=`Noch ${fmt(dist(plan.zone,plan.current))} Punkte bis zur Prüfzone.`;$('bar').style.width=Math.min(100,Math.max(0,signedProgress()))+'%';$('hkcmView').innerHTML=imgHtml(plan.hkcm);$('tvView').innerHTML=imgHtml(plan.tv);zoneReached()?$('decision').classList.remove('hidden'):$('decision').classList.add('hidden');updateClockAndSession();updateCoach();renderTrades();renderChallenge()}
-
-function loadImage(e,type){let file=e.target.files[0];if(!file)return;let r=new FileReader();r.onload=()=>{plan[type]=r.result;store.set('atlasPlan',plan);$(type+'Preview').innerHTML=imgHtml(r.result);render()};r.readAsDataURL(file)}
-function savePlan(){plan={...plan,market:$('fMarket').value,symbol:$('fSymbol').value,direction:$('fDirection').value,contracts:$('fContracts').value,entry:+$('fEntry').value,target:+$('fTarget').value,stop:+$('fStop').value,current:+$('fCurrent').value,zone:+$('fZone').value,why:$('fWhy').value,rule:$('fRule').value};store.set('atlasPlan',plan);render();show('plan')}
-async function updateYahoo(){if(!plan.symbol){$('liveStatus').textContent='Bitte zuerst ein Yahoo-Symbol in der Eingabe hinterlegen.';return}$('liveStatus').textContent='Yahoo-Daten werden geladen ...';const url='https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(plan.symbol);const proxies=[url,'https://api.allorigins.win/raw?url='+encodeURIComponent(url),'https://corsproxy.io/?'+encodeURIComponent(url)];for(const u of proxies){try{const res=await fetch(u);if(!res.ok)throw new Error('HTTP '+res.status);const data=await res.json();const meta=data.chart.result[0].meta;const price=meta.regularMarketPrice||meta.previousClose;const prev=meta.previousClose||price;plan.current=Number(price);store.set('atlasPlan',plan);$('livePrice').textContent=fmt(price);$('liveChange').textContent=((price-prev)>=0?'+':'')+(price-prev).toFixed(2);$('liveChange').className=(price-prev)>=0?'green':'red';$('liveStatus').textContent='Live-Daten aktualisiert: '+new Date().toLocaleTimeString('de-DE');loadForm();render();return}catch(e){console.warn(e)}}$('liveStatus').textContent='Yahoo konnte nicht geladen werden. Bitte Kurs manuell eintragen.'}
-function closeActiveTrade(){const r=Number($('closeResult').value);if(!r && r!==0){alert('Bitte Ergebnis eintragen.');return}trades.unshift({date:new Date().toLocaleDateString('de-DE'),market:plan.market,direction:plan.direction,result:r,note:$('closeNote').value||'',entry:plan.entry,target:plan.target,stop:plan.stop});store.set('atlasTrades',trades);$('closeResult').value='';$('closeNote').value='';render();show('journal')}
-function deleteTrade(i){if(!confirm('Trade wirklich löschen?'))return;trades.splice(i,1);store.set('atlasTrades',trades);renderTrades()}
-function renderTrades(){if(!trades.length){$('tradeList').innerHTML='<p>Noch keine beendeten Trades.</p>';return}$('tradeList').innerHTML=trades.map((t,i)=>`<div class="tradeRow"><div><b>${t.date} · ${t.market}</b><br><span>${t.direction} · ${t.note||''}</span></div><div>${t.result>=0?'Gewinn':'Verlust'}</div><div class="${t.result>=0?'plus':'minus'}">${pts(t.result)}</div><button class="deleteBtn" onclick="deleteTrade(${i})">×</button></div>`).join('')}
-function exportJournalPdf(){let rows=trades.map(t=>`<tr><td>${t.date}</td><td>${t.market}</td><td>${t.direction}</td><td>${t.result}</td><td>${t.note||''}</td></tr>`).join('');let w=window.open('','_blank');w.document.write(`<html><head><title>Atlas Journal</title><style>body{font-family:Arial;padding:30px}h1{color:#8b6b28}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ccc;padding:8px;text-align:left}</style></head><body><h1>Atlas Trading Journal</h1><table><tr><th>Datum</th><th>Markt</th><th>Richtung</th><th>Ergebnis</th><th>Notiz</th></tr>${rows}</table><script>print()<\/script></body></html>`);w.document.close()}
-function toggleBox(i){challenge[i]=challenge[i]?null:new Date().toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});store.set('atlasChallenge',challenge);renderChallenge()}
-function renderChallenge(){let done=challenge.filter(Boolean).length;$('wealthNow').textContent=done+' / 50';$('wealthPct').textContent=Math.round(done/50*100)+'%';$('lastCheck').textContent=challenge.filter(Boolean).slice(-1)[0]||'–';$('boxes').innerHTML=Array.from({length:50},(_,i)=>`<div onclick="toggleBox(${i})" class="box ${challenge[i]?'done':''}">${i+1}<br>${challenge[i]||''}</div>`).join('')}
-makeNav();loadForm();render();setInterval(updateClockAndSession,1000);
+const state={plan:JSON.parse(localStorage.getItem('atlas.plan')||'null'),journal:JSON.parse(localStorage.getItem('atlas.journal')||'[]'),challenge:JSON.parse(localStorage.getItem('atlas.challenge')||'[]')};
+function fmt(n,d=2){if(n===null||n===undefined||Number.isNaN(Number(n)))return'–';return Number(n).toLocaleString('de-DE',{maximumFractionDigits:d})}
+function money(n){return fmt(n,0)+' €'}
+function points(n){if(n===null||n===undefined||Number.isNaN(Number(n)))return'–';return (n>=0?'+':'')+fmt(n,2)+' P'}
+function save(){localStorage.setItem('atlas.plan',JSON.stringify(state.plan));localStorage.setItem('atlas.journal',JSON.stringify(state.journal));localStorage.setItem('atlas.challenge',JSON.stringify(state.challenge))}
+function screen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');document.querySelectorAll('[data-screen]').forEach(b=>b.classList.toggle('active',b.dataset.screen===id));$('headline').textContent={dashboard:'Dashboard',create:'Eingabe',plan:'Mein Plan',journal:'Journal',challenge:'Challenge'}[id]||'Atlas';window.scrollTo(0,0)}
+function initNav(){document.querySelectorAll('[data-screen]').forEach(b=>b.addEventListener('click',()=>screen(b.dataset.screen)));document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>screen(b.dataset.go)))}
+function initMarkets(){marketSelect.innerHTML=markets.map((m,i)=>`<option value="${i}">${m.name}</option>`).join('');marketSelect.addEventListener('change',()=>{const m=markets[marketSelect.value];symbolInput.value=m.symbol;pointValueInput.value=m.pointValue||1})}
+function validatePlan(p){const e=Number(p.entry),s=Number(p.stop),t=Number(p.target);const errors=[];if(!p.market)errors.push('Markt fehlt.');if(!p.direction)errors.push('Richtung fehlt.');if(!e||!s||!t)errors.push('Einstieg, Stop und Ziel müssen ausgefüllt sein.');if(p.direction==='Long'&&s>=e)errors.push('Long: Stop muss unter dem Einstieg liegen.');if(p.direction==='Long'&&t<=e)errors.push('Long: Ziel muss über dem Einstieg liegen.');if(p.direction==='Short'&&s<=e)errors.push('Short: Stop muss über dem Einstieg liegen.');if(p.direction==='Short'&&t>=e)errors.push('Short: Ziel muss unter dem Einstieg liegen.');const risk=Math.abs(e-s),chance=Math.abs(t-e);if(risk&&chance&&chance/risk<1)errors.push('CRV liegt unter 1,0. Trade bewusst prüfen.');return errors}
+function readImage(input){return new Promise(resolve=>{const file=input.files&&input.files[0];if(!file)return resolve('');const r=new FileReader();r.onload=()=>resolve(r.result);r.readAsDataURL(file)})}
+async function savePlan(){const m=markets[marketSelect.value];const p={market:m.name==='Benutzerdefiniert'?(symbolInput.value||'Custom'):m.name,symbol:symbolInput.value.trim(),direction:directionInput.value,contracts:contractsInput.value||'1',entry:+entryInput.value,stop:+stopInput.value,target:+targetInput.value,zone:+zoneInput.value,current:+currentInput.value,pointValue:+pointValueInput.value||1,why:whyInput.value,rule:ruleInput.value,hkcm:await readImage(hkcmInput)||state.plan?.hkcm||'',tv:await readImage(tvInput)||state.plan?.tv||'',createdAt:new Date().toISOString()};const errors=validatePlan(p);validationBox.innerHTML=errors.length?'⚠️ '+errors.join('<br>'):'✓ Plan plausibel.';if(errors.some(e=>!e.includes('CRV')))return;state.plan=p;save();renderAll();screen('plan')}
+function loadPlanToForm(){if(!state.plan){marketSelect.value=1;marketSelect.dispatchEvent(new Event('change'));return}const idx=markets.findIndex(m=>m.symbol===state.plan.symbol);marketSelect.value=idx>=0?idx:markets.length-1;symbolInput.value=state.plan.symbol||'';directionInput.value=state.plan.direction||'Long';contractsInput.value=state.plan.contracts||'';entryInput.value=state.plan.entry||'';stopInput.value=state.plan.stop||'';targetInput.value=state.plan.target||'';zoneInput.value=state.plan.zone||'';currentInput.value=state.plan.current||'';pointValueInput.value=state.plan.pointValue||1;whyInput.value=state.plan.why||'';ruleInput.value=state.plan.rule||'';renderPreview(hkcmPreview,state.plan.hkcm);renderPreview(tvPreview,state.plan.tv)}
+function calc(p){if(!p)return null;const current=Number(p.current),entry=Number(p.entry),stop=Number(p.stop),target=Number(p.target),zone=Number(p.zone||entry),pv=Number(p.pointValue||1),contracts=parseFloat(String(p.contracts).replace(',','.'))||1;const riskPts=Math.abs(entry-stop),chancePts=Math.abs(target-entry);const crv=riskPts?chancePts/riskPts:null;const long=p.direction==='Long';const toEntry=Math.abs(current-entry),toStop=Math.abs(current-stop),toTarget=Math.abs(target-current),toZone=Math.abs(zone-current);const riskMoney=riskPts*pv*contracts,chanceMoney=chancePts*pv*contracts;let progress=long?(current-stop)/(target-stop):(stop-current)/(stop-target);progress=Math.max(0,Math.min(1,progress));return{current,entry,stop,target,zone,pv,contracts,riskPts,chancePts,crv,toEntry,toStop,toTarget,toZone,riskMoney,chanceMoney,progress,long}}
+function brain(p){const c=calc(p);if(!p||!c)return{title:'Warte auf Plan',msg:'Lege zuerst einen Trade an.',risk:'Neutral',cls:''};const active=c.long?c.current>=c.entry:c.current<=c.entry;const stopped=c.long?c.current<=c.stop:c.current>=c.stop;const targetHit=c.long?c.current>=c.target:c.current<=c.target;const nearStop=c.toStop<=c.riskPts*0.18;const nearTarget=c.toTarget<=c.chancePts*0.15;const nearZone=c.toZone<=Math.max(c.riskPts*0.15,20);if(stopped)return{title:'Invalidierung erreicht',msg:'Nicht diskutieren. Prüfe nur, ob dein dokumentierter Stop/Invalidierungspunkt ausgelöst wurde. Wenn ja: Trade beenden und ins Journal.',risk:'Rot',cls:'risk-red'};if(targetHit)return{title:'Zielbereich erreicht',msg:'Der Trade hat geliefert. Handle jetzt nach deinem Ausstiegsplan, nicht aus Euphorie.',risk:'Grün',cls:'risk-green'};if(!active)return{title:'Vor Einstieg',msg:'Nicht hinterherlaufen. Dein Job ist Geduld: Einstieg abwarten oder Setup verwerfen, aber nicht spontan jagen.',risk:'Gelb',cls:'risk-yellow'};if(nearStop)return{title:'Stop-Zone',msg:'Angst ist jetzt normal. Keine neue Entscheidung aus Emotion. Nur die ursprüngliche Invalidierung zählt.',risk:'Rot',cls:'risk-red'};if(nearTarget)return{title:'Nahe Zielzone',msg:'Nicht zu früh aussteigen. Wenn Teilgewinn geplant war, dann planmäßig. Wenn nicht: Ziel respektieren.',risk:'Grün',cls:'risk-green'};if(nearZone)return{title:'Prüfzone',msg:'Analyse einblenden, Struktur prüfen, aber keine spontane Entscheidung treffen. Erst ursprüngliche Regel lesen.',risk:'Gelb',cls:'risk-yellow'};return{title:'Plan läuft',msg:'Der Trade bewegt sich innerhalb deines Plans. Nicht eingreifen, solange keine objektive Strukturänderung vorliegt.',risk:'Grün',cls:'risk-green'}}
+async function fetchYahoo(){if(!state.plan?.symbol)return;try{const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(state.plan.symbol)}?interval=1m&range=1d`;const res=await fetch(url);const data=await res.json();const r=data.chart.result?.[0];const price=r?.meta?.regularMarketPrice;if(price){state.plan.current=price;currentInput.value=price;save();renderAll()}}catch(e){console.warn('Yahoo Abruf nicht möglich über GitHub Pages/CORS. Manueller Kurs bleibt aktiv.',e)}}
+function renderPreview(el,src){el.innerHTML=src?`<img src="${src}" alt="Screenshot">`:'Noch kein Bild';if(src)el.querySelector('img').onclick=()=>openImage(src)}
+function renderPlan(){const p=state.plan,c=calc(p),b=brain(p);dashTitle.textContent=p?`${p.market} · ${p.direction}`:'Noch kein aktiver Trade';dashText.textContent=p?`Symbol ${p.symbol||'–'} · ${p.contracts||'–'} · Atlas überwacht deine Tradephase.`:'Lege unter „Eingabe“ deinen nächsten Trade an.';brainTitle.textContent=b.title;brainMessage.textContent=b.msg;riskPill.textContent=b.risk;riskPill.className='risk-pill '+b.cls;statMarket.textContent=p?p.market:'–';statPrice.textContent=c?fmt(c.current):'–';statCrv.textContent=c?.crv?fmt(c.crv,2):'–';planTitle.textContent=p?`${p.market} · ${p.direction}`:'Kein aktiver Trade';phaseText.textContent=b.title;planBrainTitle.textContent=b.title;planBrainMessage.textContent=b.msg;progressBar.style.width=c?(c.progress*100)+'%':'0%';if(c){mCurrent.textContent=fmt(c.current);mEntry.textContent=fmt(c.entry);mStop.textContent=fmt(c.stop);mTarget.textContent=fmt(c.target);mToEntry.textContent=points(c.toEntry);mToStop.textContent=points(c.toStop);mToTarget.textContent=points(c.toTarget);mCrv.textContent=fmt(c.crv,2);mRiskMoney.textContent=money(c.riskMoney);mChanceMoney.textContent=money(c.chanceMoney)}else document.querySelectorAll('.metrics b').forEach(x=>x.textContent='–');whyList.innerHTML=p?.why?p.why.split('\n').filter(Boolean).map(x=>`<div class="pill">✓ ${x}</div>`).join(''):'–';mentorRule.textContent=p?.rule||'–';renderPreview(hkcmPlan,p?.hkcm);renderPreview(tvPlan,p?.tv)}
+function closeTrade(){if(!state.plan)return alert('Kein aktiver Trade vorhanden.');const c=calc(state.plan);const resultPts=state.plan.direction==='Long'?c.current-c.entry:c.entry-c.current;state.journal.unshift({...state.plan,closedAt:new Date().toISOString(),resultPts,resultMoney:resultPts*c.pv*c.contracts});state.plan=null;save();renderAll();screen('journal')}
+function renderJournal(){journalList.innerHTML=state.journal.length?state.journal.map((t,i)=>`<div class="journal-item"><div><b>${new Date(t.closedAt).toLocaleDateString('de-DE')} · ${t.market}</b><br><span>${t.direction} · ${t.symbol||''}</span><br><span class="${t.resultPts>=0?'gain':'loss'}">${points(t.resultPts)} · ${money(t.resultMoney)}</span></div><button onclick="deleteJournal(${i})">Löschen</button></div>`).join(''):'Noch keine beendeten Trades.'}
+window.deleteJournal=i=>{state.journal.splice(i,1);save();renderJournal()}
+function exportJournal(){const w=window.open('','_blank');w.document.write(`<h1>Atlas Journal</h1>${state.journal.map(t=>`<p><b>${new Date(t.closedAt).toLocaleDateString('de-DE')} · ${t.market}</b><br>${t.direction} · Ergebnis: ${points(t.resultPts)} · ${money(t.resultMoney)}<br>${(t.why||'').replaceAll('\n','<br>')}</p><hr>`).join('')}`);w.document.close();w.print()}
+function renderChallenge(){const done=state.challenge.filter(Boolean).length;challengeDone.textContent=done+' / 50';challengeMoney.textContent=money(done*20000);challengeLast.textContent=state.challenge.filter(Boolean).slice(-1)[0]||'–';challengeGrid.innerHTML=Array.from({length:50},(_,i)=>`<div class="challenge-box ${state.challenge[i]?'done':''}" onclick="toggleChallenge(${i})">${i+1}<br>${state.challenge[i]||''}</div>`).join('')}
+window.toggleChallenge=i=>{state.challenge[i]=state.challenge[i]?null:new Date().toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});save();renderChallenge()}
+function openImage(src){imageModal.querySelector('img').src=src;imageModal.classList.add('show')}imageModal.addEventListener('click',()=>imageModal.classList.remove('show'));
+function marketClock(){const now=new Date();const de=now.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});const day=now.getDay();const min=now.getHours()*60+now.getMinutes();const open=day>=1&&day<=5&&min>=15*60+30&&min<22*60;marketStatus.textContent=`${de} · US Future/Session ${open?'geöffnet':'geschlossen'}`;marketStatus.className='market-status '+(open?'risk-green':'risk-yellow')}
+function renderAll(){renderPlan();renderJournal();renderChallenge()}
+function init(){initNav();initMarkets();loadPlanToForm();savePlanBtn.onclick=savePlan;closeTradeBtn.onclick=closeTrade;exportBtn.onclick=exportJournal;hkcmInput.onchange=async()=>renderPreview(hkcmPreview,await readImage(hkcmInput));tvInput.onchange=async()=>renderPreview(tvPreview,await readImage(tvInput));marketClock();setInterval(marketClock,30000);renderAll();setInterval(fetchYahoo,60000)}
+init();
