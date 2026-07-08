@@ -1,35 +1,160 @@
-<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Atlas Core V3.1</title><style>
-:root{--bg:#07101c;--card:#17263b;--card2:#1b2d46;--line:#33445c;--gold:#d6b86a;--text:#f7f0df;--muted:#9fb2cf;--green:#72d79b;--red:#e07171}
-*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#0d1a2b,#050a12);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.app{max-width:1180px;margin:auto;display:grid;grid-template-columns:210px 1fr;min-height:100vh}.side{background:#07101c;border-right:1px solid #17243a;padding:28px 20px;position:sticky;top:0;height:100vh}.logoBox{text-align:center;margin-bottom:30px}.logo{width:64px;height:64px;border-radius:50%;border:1px solid var(--gold);display:grid;place-items:center;margin:auto;color:var(--gold);font-family:Georgia;font-size:34px}.brand{letter-spacing:6px;color:var(--gold);font-weight:900;font-size:25px;margin-top:12px}.tag{font-size:11px;letter-spacing:2px;color:#b6c9e8}.nav button{width:100%;background:transparent;border:0;color:#b6c9e8;text-align:left;padding:13px 14px;border-radius:12px;margin:4px 0;font-size:15px}.nav button.active{background:#1d2736;color:var(--gold)}main{padding:28px 30px 80px}.screen{display:none}.screen.active{display:block}.grid{display:grid;grid-template-columns:1.12fr .88fr;gap:22px}.card{background:rgba(23,38,59,.92);border:1px solid var(--line);border-radius:22px;padding:22px;margin-bottom:18px;box-shadow:0 16px 35px rgba(0,0,0,.22)}.hero{padding:30px}.label{font-size:12px;color:#aac0df;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px}.big{font-size:42px;line-height:1;font-weight:900}.gold{color:var(--gold)}.green{color:var(--green)}.red{color:var(--red)}p{color:#d9e5f8;line-height:1.45}.progress{height:14px;background:#30415a;border-radius:999px;overflow:hidden;margin:22px 0 10px}.progress div{height:100%;background:var(--gold);width:50%}.scale{display:flex;justify-content:space-between;color:#bad0ef;font-size:14px}.quote{border-left:3px solid var(--gold);background:rgba(0,0,0,.18);border-radius:14px;padding:15px 18px;font-family:Georgia;font-size:22px;color:#fff1bd;margin-top:20px}.pill{display:block;background:#20364f;border:1px solid #3b5574;border-radius:14px;padding:12px 15px;margin:7px 0}.stats{display:grid;grid-template-columns:1fr 1fr;gap:14px}.stat{background:#23344d;border:1px solid #42536b;border-radius:16px;padding:16px}.stat b{font-size:25px;color:#fff}.shots{display:grid;grid-template-columns:1fr 1fr;gap:18px}.shot{background:#0c1523;border:1px solid #42536b;border-radius:18px;padding:12px}.shot img{width:100%;max-height:260px;object-fit:contain;border-radius:14px;background:#050a12;cursor:pointer}.emptyShot{height:170px;border:1px dashed #60718a;border-radius:14px;display:grid;place-items:center;color:#9fb2cf;text-align:center}.event{display:grid;grid-template-columns:75px 1fr;gap:14px;border-left:2px solid var(--gold);padding:8px 0 8px 16px}.event span{color:var(--gold)}input,select,textarea{width:100%;background:#08111e;color:var(--text);border:1px solid #38506d;border-radius:12px;padding:13px;margin:7px 0 14px;font-size:16px}textarea{min-height:90px}button.primary{width:100%;border:0;border-radius:14px;background:linear-gradient(#e4c878,#caa85c);padding:15px;font-weight:900;font-size:16px;color:#101826}button.secondary{width:100%;border:1px solid #52657f;border-radius:14px;background:#243650;color:#fff;padding:15px;font-weight:800}.uploadBox{background:#0d1726;border:1px dashed #60718a;border-radius:16px;padding:15px;margin-bottom:16px}.challengeGrid{display:grid;grid-template-columns:repeat(10,1fr);gap:10px}.box{height:72px;border:1px solid #766844;border-radius:10px;display:grid;place-items:center;color:#b9d0ee;font-size:11px;text-align:center;cursor:pointer;padding:4px}.box.done{background:linear-gradient(#e4c878,#b99045);color:#07101c;font-weight:900}.tradeRow{display:grid;grid-template-columns:1fr 85px 85px;gap:10px;align-items:center;background:#20364f;border:1px solid #3b5574;border-radius:14px;padding:13px;margin:9px 0}.plus{color:var(--green);font-weight:900}.minus{color:var(--red);font-weight:900}.bottom{display:none}.hidden{display:none}.modal{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:999;display:none;align-items:center;justify-content:center;padding:18px}.modal img{max-width:100%;max-height:90vh;border-radius:14px}.modal.show{display:flex}.modalClose{position:absolute;top:18px;right:18px;background:#17263b;color:white;border:1px solid #52657f;border-radius:12px;padding:10px 14px;font-weight:900}
-@media(max-width:760px){.app{display:block}.side{display:none}main{padding:16px 13px 92px}.grid,.shots{grid-template-columns:1fr}.big{font-size:35px}.hero{padding:22px}.card{border-radius:20px;padding:17px}.stats{grid-template-columns:1fr 1fr}.challengeGrid{grid-template-columns:repeat(5,1fr)}.box{height:62px}.tradeRow{grid-template-columns:1fr 70px 70px;font-size:13px}.bottom{display:grid;grid-template-columns:repeat(4,1fr);position:fixed;bottom:0;left:0;right:0;background:#07101c;border-top:1px solid #22344e;padding-bottom:env(safe-area-inset-bottom);z-index:50}.bottom button{background:transparent;border:0;color:#9fb2cf;padding:12px 2px;font-size:11px}.bottom button.active{color:var(--gold)}}
-</style></head><body><div class="app"><aside class="side"><div class="logoBox"><div class="logo">A</div><div class="brand">ATLAS</div><div class="tag">TRADE YOUR PLAN</div></div><div class="nav" id="nav"></div></aside><main>
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Atlas V4</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="logoBox">
+        <div class="logo">A</div>
+        <div class="brand">ATLAS</div>
+        <div class="tag">TRADE YOUR PLAN</div>
+      </div>
+      <div class="nav" id="nav"></div>
+    </aside>
 
-<section id="plan" class="screen active"><div class="grid"><div><div class="card hero"><div class="label">Status</div><div class="big green">✓ PLAN LÄUFT</div><div class="big gold">Geduld</div><p>Der Markt bewegt sich innerhalb deines Plans.</p><div class="progress"><div id="bar"></div></div><div class="scale"><span>Stop <b id="sStop"></b></span><span>Einstieg <b id="sEntry"></b></span><span class="gold">Jetzt</span><span>Ziel <b id="sTarget"></b></span></div><div class="quote">„Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.“</div></div><div id="decision" class="card hidden"><div class="label">Entscheidungsmodus</div><h2 class="gold">Prüfzone erreicht</h2><p>Atlas blendet jetzt die ursprüngliche Analyse ein, die für diese Entscheidung relevant ist.</p></div><div class="card"><div class="label">Analysebilder</div><p>Bild antippen zum Vergrößern.</p><div class="shots"><div class="shot"><div class="label">HKCM Analyse</div><div id="hkcmView"></div></div><div class="shot"><div class="label">TradingView</div><div id="tvView"></div></div></div></div></div><div><div class="card"><div class="label">Marktidee</div><h1 id="marketTitle"></h1><p id="directionLine"></p></div><div class="card"><div class="label">Warum?</div><div id="whyList"></div></div><div class="card"><div class="label">Trade-Daten</div><div class="stats"><div class="stat"><b id="dEntry"></b><br>Einstieg</div><div class="stat"><b id="dTarget"></b><br>Ziel</div><div class="stat"><b id="dStop"></b><br>Stop</div><div class="stat"><b id="dCurrent"></b><br>Aktueller Kurs</div></div></div><div class="card"><div class="label">Abstände</div><div class="stats"><div class="stat"><b id="pEntry"></b><br>Punkte bis Einstieg</div><div class="stat"><b id="pTarget"></b><br>Punkte bis Ziel</div><div class="stat"><b id="pStop"></b><br>Punkte bis Stop</div><div class="stat"><b id="pZone"></b><br>Punkte bis Prüfzone</div></div><p id="distanceText"></p></div><div class="card"><div class="label">Mentor-Regel</div><p id="ruleText"></p></div></div></div></section>
+    <main>
+      <section id="plan" class="screen active">
+        <div class="grid">
+          <div>
+            <div class="card hero">
+              <div class="label">Status</div>
+              <div id="statusTitle" class="big green">✓ PLAN LÄUFT</div>
+              <div id="statusSub" class="big gold">Geduld</div>
+              <p id="statusText">Der Markt bewegt sich innerhalb deines Plans.</p>
+              <div class="progress"><div id="bar"></div></div>
+              <div class="scale">
+                <span>Stop <b id="sStop"></b></span>
+                <span>Einstieg <b id="sEntry"></b></span>
+                <span class="gold">Jetzt</span>
+                <span>Ziel <b id="sTarget"></b></span>
+              </div>
+              <div id="liveStatus" class="liveBadge">Live-Daten noch nicht aktualisiert</div>
+              <div class="quote">„Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.“</div>
+            </div>
 
-<section id="create" class="screen"><div class="card"><div class="label">Trade-Editor</div><h1>Plan eingeben</h1><input id="fMarket" placeholder="Markt"><select id="fDirection"><option>Long</option><option>Short</option></select><input id="fContracts" placeholder="Kontrakte"><input id="fEntry" placeholder="Einstieg"><input id="fTarget" placeholder="Ziel"><input id="fStop" placeholder="Stop"><input id="fCurrent" placeholder="Aktueller Kurs"><input id="fZone" placeholder="Nächste Prüfzone"><textarea id="fWhy" placeholder="Warum? Je Zeile ein Punkt"></textarea><textarea id="fRule" placeholder="Mentor-Regel"></textarea></div><div class="card"><div class="label">Screenshots hinzufügen</div><div class="uploadBox"><b>HKCM Analyse</b><input type="file" id="hkcmFile" accept="image/*" onchange="loadImage(event,'hkcm')"><div id="hkcmPreview"></div></div><div class="uploadBox"><b>TradingView Screenshot</b><input type="file" id="tvFile" accept="image/*" onchange="loadImage(event,'tv')"><div id="tvPreview"></div></div><button class="primary" onclick="savePlan()">Plan speichern</button></div></section>
+            <div id="decision" class="card hidden">
+              <div class="label">Entscheidungsmodus</div>
+              <h2 class="gold">Prüfzone erreicht</h2>
+              <p>Atlas blendet jetzt die ursprüngliche Analyse ein. Prüfe zuerst den Plan, bevor du emotional reagierst.</p>
+            </div>
 
-<section id="journal" class="screen"><div class="card"><div class="label">Trading Journal</div><h1>Beendete Trades</h1><div id="tradeList"></div></div><div class="card"><div class="label">Trade abschließen</div><input id="jMarket" placeholder="Markt"><select id="jDirection"><option>Long</option><option>Short</option></select><input id="jResult" placeholder="Ergebnis in Punkten, z. B. 900 oder -300"><textarea id="jNote" placeholder="Kurze Notiz"></textarea><button class="primary" onclick="addTrade()">Trade speichern</button></div></section>
+            <div class="card">
+              <div class="label">Analysebilder</div>
+              <p>Bild antippen zum Vergrößern.</p>
+              <div class="shots">
+                <div class="shot"><div class="label">HKCM Analyse</div><div id="hkcmView"></div></div>
+                <div class="shot"><div class="label">TradingView</div><div id="tvView"></div></div>
+              </div>
+            </div>
+          </div>
 
-<section id="challenge" class="screen"><div class="card"><div class="label">Großes Ziel</div><h1>1 Mio Challenge</h1><div class="stats"><div class="stat"><b id="wealthNow"></b><br>Abgehakt</div><div class="stat"><b id="wealthPct"></b><br>Fortschritt</div><div class="stat"><b id="lastCheck"></b><br>Letzter Haken</div></div><p>Tippe ein Kästchen an, um es mit Zeitstempel abzuhaken oder wieder zu entfernen.</p></div><div class="card"><div class="label">50 × 20.000 €</div><div class="challengeGrid" id="boxes"></div></div></section>
+          <div>
+            <div class="card">
+              <div class="label">Marktidee</div>
+              <h1 id="marketTitle"></h1>
+              <p id="directionLine"></p>
+            </div>
+            <div class="card"><div class="label">Warum?</div><div id="whyList"></div></div>
+            <div class="card">
+              <div class="label">Trade-Daten</div>
+              <div class="stats">
+                <div class="stat"><b id="dEntry"></b><br>Einstieg</div>
+                <div class="stat"><b id="dTarget"></b><br>Ziel</div>
+                <div class="stat"><b id="dStop"></b><br>Stop</div>
+                <div class="stat"><b id="dCurrent"></b><br>Aktueller Kurs</div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="label">Abstände</div>
+              <div class="stats">
+                <div class="stat"><b id="pEntry"></b><br>Punkte bis Einstieg</div>
+                <div class="stat"><b id="pTarget"></b><br>Punkte bis Ziel</div>
+                <div class="stat"><b id="pStop"></b><br>Punkte bis Stop</div>
+                <div class="stat"><b id="pZone"></b><br>Punkte bis Prüfzone</div>
+              </div>
+              <p id="distanceText"></p>
+            </div>
+            <div class="card">
+              <div class="label">Trade abschließen</div>
+              <p>Der aktive Trade wird hier beendet und automatisch ins Journal geschrieben.</p>
+              <input id="closeResult" inputmode="decimal" placeholder="Ergebnis in Punkten, z. B. 900 oder -300" />
+              <textarea id="closeNote" placeholder="Abschluss-Notiz"></textarea>
+              <button class="primary" id="btnCloseTrade">Trade abschließen & ins Journal</button>
+            </div>
+            <div class="card"><div class="label">Mentor-Regel</div><p id="ruleText"></p></div>
+          </div>
+        </div>
+      </section>
 
-</main></div><div class="bottom" id="bottom"></div><div class="modal" id="imgModal" onclick="closeImg()"><button class="modalClose">Schließen</button><img id="modalImg"></div>
-<script>
-const tabs=[['plan','Mein Plan'],['create','Eingabe'],['journal','Journal'],['challenge','Challenge']];
-function makeNav(){nav.innerHTML=bottom.innerHTML=tabs.map((t,i)=>`<button onclick="show('${t[0]}',this)" class="${i?'':'active'}">${t[1]}</button>`).join('')}
-function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('button').forEach(b=>b.classList.remove('active'));document.querySelectorAll(`button[onclick*="${id}"]`).forEach(b=>b.classList.add('active'));scrollTo(0,0)}
-let plan=JSON.parse(localStorage.getItem('atlasPlan')||'null')||{market:'Dow Jones',direction:'Long',contracts:'2 Kontrakte',entry:43180,target:45000,stop:42180,current:44270,zone:44420,why:'Welle IV abgeschlossen\nErwartung Welle V\nImpulsstruktur intakt\nInvalidierung unter 42.180\nZielbereich 45.000',rule:'Keine neue Entscheidung ohne objektive Strukturänderung.',hkcm:'',tv:''};
-let trades=JSON.parse(localStorage.getItem('atlasTrades')||'null')||[{date:'08.07.',market:'Dow Jones',direction:'Long',result:900,note:'Ziel erreicht'},{date:'09.07.',market:'Nasdaq',direction:'Short',result:-300,note:'Invalidiert'},{date:'10.07.',market:'Silber',direction:'Long',result:510,note:'Teilgewinn'}];
-let challenge=JSON.parse(localStorage.getItem('atlasChallenge')||'[]');
-function fmt(n){return Number(n).toLocaleString('de-DE')}function pts(n){return(n>0?'+':'')+fmt(n)+'P'}function dist(a,b){return Math.round(Math.abs(Number(a)-Number(b)))}
-function openImg(src){modalImg.src=src;imgModal.classList.add('show')}function closeImg(){imgModal.classList.remove('show')}
-function imgHtml(src){return src?`<img src="${src}" onclick="openImg('${src}')">`:`<div class="emptyShot">Noch kein Screenshot<br>über Eingabe hinzufügen</div>`}
-function loadForm(){fMarket.value=plan.market;fDirection.value=plan.direction;fContracts.value=plan.contracts;fEntry.value=plan.entry;fTarget.value=plan.target;fStop.value=plan.stop;fCurrent.value=plan.current;fZone.value=plan.zone;fWhy.value=plan.why;fRule.value=plan.rule;jMarket.value=plan.market;jDirection.value=plan.direction;hkcmPreview.innerHTML=imgHtml(plan.hkcm);tvPreview.innerHTML=imgHtml(plan.tv)}
-function render(){marketTitle.textContent=`${plan.market} · ${plan.direction}`;directionLine.textContent=plan.contracts;dEntry.textContent=fmt(plan.entry);dTarget.textContent=fmt(plan.target);dStop.textContent=fmt(plan.stop);dCurrent.textContent=fmt(plan.current);sStop.textContent=fmt(plan.stop);sEntry.textContent=fmt(plan.entry);sTarget.textContent=fmt(plan.target);whyList.innerHTML=plan.why.split('\n').filter(Boolean).map(x=>`<div class="pill">✓ ${x}</div>`).join('');pEntry.textContent=pts(dist(plan.current,plan.entry));pTarget.textContent=pts(dist(plan.target,plan.current));pStop.textContent=pts(dist(plan.current,plan.stop));pZone.textContent=pts(dist(plan.zone,plan.current));distanceText.textContent=`Noch ${fmt(dist(plan.zone,plan.current))} Punkte bis zur Prüfzone.`;bar.style.width=Math.min(100,Math.max(0,(plan.current-plan.stop)/(plan.target-plan.stop)*100))+'%';ruleText.textContent=plan.rule;hkcmView.innerHTML=imgHtml(plan.hkcm);tvView.innerHTML=imgHtml(plan.tv);if(Number(plan.current)>=Number(plan.zone))decision.classList.remove('hidden');else decision.classList.add('hidden');renderTrades()}
-function loadImage(e,type){let file=e.target.files[0];if(!file)return;let r=new FileReader();r.onload=()=>{plan[type]=r.result;document.getElementById(type+'Preview').innerHTML=imgHtml(r.result)};r.readAsDataURL(file)}
-function savePlan(){plan={...plan,market:fMarket.value,direction:fDirection.value,contracts:fContracts.value,entry:+fEntry.value,target:+fTarget.value,stop:+fStop.value,current:+fCurrent.value,zone:+fZone.value,why:fWhy.value,rule:fRule.value};localStorage.setItem('atlasPlan',JSON.stringify(plan));render();show('plan')}
-function addTrade(){let r=Number(jResult.value);if(!r)return;trades.unshift({date:new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'}),market:jMarket.value,direction:jDirection.value,result:r,note:jNote.value||''});localStorage.setItem('atlasTrades',JSON.stringify(trades));jResult.value='';jNote.value='';renderTrades()}
-function renderTrades(){tradeList.innerHTML=trades.map(t=>`<div class="tradeRow"><div><b>${t.date} · ${t.market}</b><br><span>${t.direction} · ${t.note}</span></div><div>${t.result>=0?'Gewinn':'Verlust'}</div><div class="${t.result>=0?'plus':'minus'}">${pts(t.result)}</div></div>`).join('')}
-function toggleBox(i){if(challenge[i])challenge[i]=null;else challenge[i]=new Date().toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});localStorage.setItem('atlasChallenge',JSON.stringify(challenge));renderChallenge()}
-function renderChallenge(){let done=challenge.filter(Boolean).length;wealthNow.textContent=done+' / 50';wealthPct.textContent=Math.round(done/50*100)+'%';lastCheck.textContent=challenge.filter(Boolean).slice(-1)[0]||'–';boxes.innerHTML=Array.from({length:50},(_,i)=>`<div onclick="toggleBox(${i})" class="box ${challenge[i]?'done':''}">${i+1}<br>${challenge[i]||''}</div>`).join('')}
-makeNav();loadForm();render();renderChallenge();
-</script></body></html>
+      <section id="create" class="screen">
+        <div class="card">
+          <div class="label">Trade-Editor</div>
+          <h1>Plan eingeben</h1>
+          <input id="fMarket" placeholder="Markt" />
+          <select id="fDirection"><option>Long</option><option>Short</option></select>
+          <input id="fSymbol" placeholder="Yahoo Symbol, z. B. ^DJI, NQ=F, YM=F, SI=F" />
+          <div class="mini">Beispiele: Dow Jones = ^DJI, Nasdaq Future = NQ=F, Dow Future = YM=F, Silber = SI=F, Gold = GC=F</div>
+          <input id="fContracts" placeholder="Kontrakte" />
+          <input id="fEntry" inputmode="decimal" placeholder="Einstieg" />
+          <input id="fTarget" inputmode="decimal" placeholder="Ziel" />
+          <input id="fStop" inputmode="decimal" placeholder="Stop" />
+          <input id="fCurrent" inputmode="decimal" placeholder="Aktueller Kurs" />
+          <input id="fZone" inputmode="decimal" placeholder="Nächste Prüfzone" />
+          <textarea id="fWhy" placeholder="Warum? Je Zeile ein Punkt"></textarea>
+          <textarea id="fRule" placeholder="Mentor-Regel"></textarea>
+          <div class="rowBtns">
+            <button class="primary" id="btnSavePlan">Plan speichern</button>
+            <button class="secondary" id="btnTestYahoo">Yahoo-Kurs testen</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="label">Screenshots hinzufügen</div>
+          <div class="uploadBox"><b>HKCM Analyse</b><input type="file" id="hkcmFile" accept="image/*" /><div id="hkcmPreview"></div></div>
+          <div class="uploadBox"><b>TradingView Screenshot</b><input type="file" id="tvFile" accept="image/*" /><div id="tvPreview"></div></div>
+        </div>
+      </section>
+
+      <section id="journal" class="screen">
+        <div class="card">
+          <div class="label">Trading Journal</div>
+          <h1>Beendete Trades</h1>
+          <div class="rowBtns">
+            <button class="secondary" id="btnExportPDF">PDF-Liste erzeugen</button>
+            <button class="secondary" id="btnRefreshJournal">Journal aktualisieren</button>
+          </div>
+          <div id="tradeList"></div>
+        </div>
+      </section>
+
+      <section id="challenge" class="screen">
+        <div class="card">
+          <div class="label">Großes Ziel</div>
+          <h1>1 Mio Challenge</h1>
+          <div class="stats">
+            <div class="stat"><b id="wealthNow"></b><br>Abgehakt</div>
+            <div class="stat"><b id="wealthPct"></b><br>Fortschritt</div>
+            <div class="stat"><b id="lastCheck"></b><br>Letzter Haken</div>
+          </div>
+          <p>Tippe ein Kästchen an, um es mit Zeitstempel abzuhaken oder wieder zu entfernen.</p>
+        </div>
+        <div class="card"><div class="label">50 × 20.000 €</div><div class="challengeGrid" id="boxes"></div></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="bottom" id="bottom"></div>
+  <div class="modal" id="imgModal"><button class="modalClose" id="modalClose">Schließen</button><img id="modalImg" alt="Analysebild groß" /></div>
+
+  <script src="js/storage.js"></script>
+  <script src="js/yahoo.js"></script>
+  <script src="js/journal.js"></script>
+  <script src="js/challenge.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
