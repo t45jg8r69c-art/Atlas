@@ -1,21 +1,23 @@
 # Atlas V4
 
-Testbare Web-Version von Atlas mit getrennten Dateien.
-
-## Start
-
-Öffne `index.html` lokal im Browser oder lade den gesamten Ordner in GitHub hoch.
+Vollständig testbare Web-Version von Atlas.
 
 ## Dateien
-
-- `index.html` – Oberfläche und Screens
+- `index.html` – Oberfläche
 - `css/style.css` – Design
-- `js/storage.js` – Speicherung im Browser per localStorage
-- `js/yahoo.js` – Yahoo-Kursabruf mit Proxy-Fallback
-- `js/journal.js` – Journal, Trade-Abschluss, PDF-Export
-- `js/challenge.js` – 1-Mio-Challenge
 - `js/app.js` – Hauptlogik
+- `js/storage.js` – Speicherung im Browser
+- `js/yahoo.js` – Yahoo-Kursabruf mit CORS-Proxys
+- `js/journal.js` – Journal und PDF-Export
+- `js/challenge.js` – 1-Mio-Challenge
+
+## Testen über GitHub Pages
+1. Dateien in dein Repository hochladen.
+2. GitHub: Settings → Pages.
+3. Source: Deploy from branch.
+4. Branch: main, Folder: /root.
+5. Save.
+6. Danach den GitHub-Pages-Link öffnen.
 
 ## Hinweis Yahoo
-
-Yahoo Finance blockiert je nach Browser/Hosting direkte Anfragen. Deshalb versucht Atlas zuerst Yahoo direkt und danach einen Proxy-Fallback. Falls beides blockiert wird, bleibt die manuelle Kurseingabe im Eingabe-Screen nutzbar.
+Yahoo Finance blockiert direkte Browser-Anfragen oft per CORS. Deshalb nutzt diese Version öffentliche CORS-Proxys. Falls die temporär ausfallen, kann der aktuelle Kurs manuell im Eingabe-Screen eingetragen werden.
