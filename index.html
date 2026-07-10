@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Atlas V5.6 Broker UI</title>
+  <title>Atlas V5.7.5 Multi-Trade Desk</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -52,102 +52,120 @@
         </div>
 
         <div class="planStack">
-          <div class="card hero">
-            <div class="label">Status</div>
-            <div id="mainStatus" class="big green">✓ PLAN LÄUFT</div>
-            <div id="mainPhase" class="big gold">Geduld</div>
-            <p id="brainText">Der Markt bewegt sich innerhalb deines Plans.</p>
-            <div class="progress"><div id="bar"></div></div>
-            <div class="scale"><span>Stop <b id="sStop">-</b></span><span>Einstieg <b id="sEntry">-</b></span><span>Jetzt</span><span>Ziel <b id="sTarget">-</b></span></div>
-            <div id="brainQuote" class="quote">„Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.“</div>
-          </div>
-
-          <div class="card riskCard">
-            <div class="label">Risikoampel</div>
-            <div id="riskLamp" class="lamp"></div>
-          </div>
-
-          <div class="card">
-            <div class="label">Marktidee</div>
-            <h2 id="marketTitle">-</h2>
-            <p id="directionLine">-</p>
-            <div class="stats two">
-              <div class="stat"><b id="livePrice">-</b><br>Live-Kurs</div>
-              <div class="stat"><b id="liveChange">-</b><br>Veränderung</div>
-            </div>
-            <p id="liveMsg">Live-Daten noch nicht aktualisiert.</p>
-            <button id="btnYahoo" class="secondary">Yahoo-Kurs aktualisieren</button>
-          </div>
-
-          <div id="decision" class="card hidden">
-            <div class="label">Entscheidungsmodus</div>
-            <h2 class="gold">Prüfzone erreicht</h2>
-            <p>Prüfe zuerst deinen ursprünglichen Plan. Keine spontane Entscheidung.</p>
-          </div>
-
-          <div class="card">
-            <div class="label">Analysebilder</div>
-            <p>Bild antippen zum Vergrößern. Screenshots werden komprimiert in der Cloud gespeichert.</p>
-            <div class="shots">
-              <div class="shot"><div class="label">HKCM Analyse</div><div id="hkcmView"></div></div>
-              <div class="shot"><div class="label">TradingView</div><div id="tvView"></div></div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="label">Warum?</div>
-            <div id="whyList"></div>
-          </div>
-
-          <div class="card brokerCard">
-            <div class="label">Broker-Position</div>
-            <div class="brokerTop">
+          <div id="tradeDesk" class="card deskCard">
+            <div class="deskHeader">
               <div>
-                <span id="brokerSide" class="brokerSide">Kaufen</span>
-                <b id="brokerContracts">1,0</b>
-                <span>zu</span>
-                <b id="brokerEntry">-</b>
+                <div class="label">Trading Desk</div>
+                <h1>Aktive Trades</h1>
+                <p>Ruhige Übersicht. Details öffnen sich erst, wenn du einen Trade antippst.</p>
               </div>
-              <div id="brokerPhase" class="brokerPhase">-</div>
+              <button id="btnNewTrade" class="primary deskNewBtn">+ Neuer Trade</button>
             </div>
-            <div class="brokerPriceLine">
-              <span>Live-Kurs</span>
-              <b id="brokerCurrent">-</b>
-            </div>
-            <div class="brokerLevels">
-              <div class="brokerLevel stop"><span>Stop-Loss</span><b id="brokerStop">-</b></div>
-              <div class="brokerLevel target"><span>Take-Profit</span><b id="brokerTarget">-</b></div>
-            </div>
-            <div class="brokerFocus">
-              <div class="label">Aktuell relevant</div>
-              <h2 id="brokerRelevantDistance">-</h2>
-              <p id="brokerRelevantText">Atlas zeigt nur den Abstand, der in der aktuellen Phase wichtig ist.</p>
-            </div>
+            <div id="activeTradeList" class="activeTradeList"></div>
           </div>
 
-          <div class="card dangerCard">
-            <div class="label">Broker-Logik · Trade abschließen</div>
-            <p id="closeInfo">Atlas prüft Stop-Loss, Take-Profit und manuellen Ausstieg.</p>
-            <label>Abschlussart</label>
-            <select id="closeMode">
-              <option value="auto">Automatisch erkennen</option>
-              <option value="target">Take-Profit erreicht</option>
-              <option value="stop">Stop-Loss erreicht</option>
-              <option value="manual">Manuell geschlossen / Planabweichung</option>
-            </select>
-            <input id="closePrice" placeholder="Schlusskurs nur bei manuellem Ausstieg" inputmode="decimal" />
-            <textarea id="closeNote" placeholder="Abschlussnotiz / Grund bei manuellem Ausstieg"></textarea>
-            <button id="btnCloseTrade" class="primary">Trade gemäß Broker-Logik ins Journal übernehmen</button>
-            <p id="closeCalc" class="msg"></p>
+          <div id="tradeDetail" class="tradeDetail hidden">
+            <div class="detailActions">
+              <button id="btnBackDesk" class="secondary">← Zur Übersicht</button>
+              <button id="btnEditTrade" class="secondary">Trade bearbeiten</button>
+            </div>
+
+            <div class="card hero">
+              <div class="label">Status</div>
+              <div id="mainStatus" class="big green">✓ PLAN LÄUFT</div>
+              <div id="mainPhase" class="big gold">Geduld</div>
+              <p id="brainText">Der Markt bewegt sich innerhalb deines Plans.</p>
+              <div class="progress"><div id="bar"></div></div>
+              <div class="scale"><span>Stop <b id="sStop">-</b></span><span>Einstieg <b id="sEntry">-</b></span><span>Jetzt</span><span>Ziel <b id="sTarget">-</b></span></div>
+              <div id="brainQuote" class="quote">„Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.“</div>
+            </div>
+
+            <div class="card riskCard">
+              <div class="label">Risikoampel</div>
+              <div id="riskLamp" class="lamp"></div>
+            </div>
+
+            <div class="card">
+              <div class="label">Marktidee</div>
+              <h2 id="marketTitle">-</h2>
+              <p id="directionLine">-</p>
+              <div class="stats two">
+                <div class="stat"><b id="livePrice">-</b><br>Live-Kurs</div>
+                <div class="stat"><b id="liveChange">-</b><br>Veränderung</div>
+              </div>
+              <p id="liveMsg">Live-Daten noch nicht aktualisiert.</p>
+              <button id="btnYahoo" class="secondary">Yahoo-Kurs aktualisieren</button>
+            </div>
+
+            <div id="decision" class="card hidden">
+              <div class="label">Entscheidungsmodus</div>
+              <h2 class="gold">Prüfzone erreicht</h2>
+              <p>Prüfe zuerst deinen ursprünglichen Plan. Keine spontane Entscheidung.</p>
+            </div>
+
+            <div class="card">
+              <div class="label">Analysebilder</div>
+              <p>Bild antippen zum Vergrößern. Screenshots werden komprimiert in der Cloud gespeichert.</p>
+              <div class="shots">
+                <div class="shot"><div class="label">HKCM Analyse</div><div id="hkcmView"></div></div>
+                <div class="shot"><div class="label">TradingView</div><div id="tvView"></div></div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="label">Warum?</div>
+              <div id="whyList"></div>
+            </div>
+
+            <div class="card brokerCard">
+              <div class="label">Broker-Position</div>
+              <div class="brokerTop">
+                <div>
+                  <span id="brokerSide" class="brokerSide">Kaufen</span>
+                  <b id="brokerContracts">1,0</b>
+                  <span>zu</span>
+                  <b id="brokerEntry">-</b>
+                </div>
+                <div id="brokerPhase" class="brokerPhase">-</div>
+              </div>
+              <div class="brokerPriceLine">
+                <span>Live-Kurs</span>
+                <b id="brokerCurrent">-</b>
+              </div>
+              <div class="brokerLevels">
+                <div class="brokerLevel stop"><span>Stop-Loss</span><b id="brokerStop">-</b></div>
+                <div class="brokerLevel target"><span>Take-Profit</span><b id="brokerTarget">-</b></div>
+              </div>
+              <div class="brokerFocus">
+                <div class="label">Aktuell relevant</div>
+                <h2 id="brokerRelevantDistance">-</h2>
+                <p id="brokerRelevantText">Atlas zeigt nur den Abstand, der in der aktuellen Phase wichtig ist.</p>
+              </div>
+            </div>
+
+            <div class="card dangerCard">
+              <div class="label">Broker-Logik · Trade abschließen</div>
+              <p id="closeInfo">Atlas prüft Stop-Loss, Take-Profit und manuellen Ausstieg.</p>
+              <label>Abschlussart</label>
+              <select id="closeMode">
+                <option value="auto">Automatisch erkennen</option>
+                <option value="target">Take-Profit erreicht</option>
+                <option value="stop">Stop-Loss erreicht</option>
+                <option value="manual">Manuell geschlossen / Planabweichung</option>
+              </select>
+              <input id="closePrice" placeholder="Schlusskurs nur bei manuellem Ausstieg" inputmode="decimal" />
+              <textarea id="closeNote" placeholder="Abschlussnotiz / Grund bei manuellem Ausstieg"></textarea>
+              <button id="btnCloseTrade" class="primary">Trade gemäß Broker-Logik ins Journal übernehmen</button>
+              <p id="closeCalc" class="msg"></p>
+            </div>
           </div>
-        </div>
-      </section>
+        </div>      </section>
 
       
 <section id="create" class="screen">
         <div class="card">
           <div class="label">Trade-Eingabe</div>
-          <h1>Plan anlegen</h1>
+          <h1 id="formTitle">Trade anlegen</h1>
           <label>Markt / Future</label>
           <select id="fMarketSelect"></select>
           <input id="fMarket" placeholder="Marktname" />
@@ -170,7 +188,7 @@
           <div class="label">Screenshots</div>
           <div class="uploadBox"><b>HKCM Analyse</b><input id="hkcmFile" type="file" accept="image/*" /><div id="hkcmPreview"></div></div>
           <div class="uploadBox"><b>TradingView</b><input id="tvFile" type="file" accept="image/*" /><div id="tvPreview"></div></div>
-          <button id="btnSavePlan" class="primary">Plan in Cloud speichern</button>
+          <button id="btnSavePlan" class="primary">Trade in Cloud speichern</button>
           <p id="saveMsg" class="msg"></p>
         </div>
       </section>
