@@ -59,7 +59,45 @@ function renderBrain(p,current,k){const lamp=$('riskLamp');lamp.className='lamp'
 function imgHtml(src){return src?`<img src="${src}" class="zoomable">`:`<div class="emptyShot">Noch kein Screenshot<br>über Eingabe hinzufügen</div>`}
 async function compressImage(file){return new Promise(res=>{const img=new Image();const r=new FileReader();r.onload=()=>{img.onload=()=>{const max=1100;let w=img.width,h=img.height;if(w>max||h>max){const s=Math.min(max/w,max/h);w=Math.round(w*s);h=Math.round(h*s)}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',.72))};img.src=r.result};r.readAsDataURL(file)})}
 async function handleImage(e,type){const file=e.target.files[0];if(!file)return;const p=currentTrade()||state.plan||blankTrade();p[type]=await compressImage(file);if(p.id)upsertTrade(p);else state.plan=p;renderAll();scheduleSave()}
-function savePlan(){const existing=currentTrade();const p=existing?{...existing}:{...(state.plan||blankTrade()),id:uid(),createdAt:new Date().toISOString()};p.market=$('fMarket').value;p.symbol=$('fSymbol').value;p.direction=$('fDirection').value;p.positionStatus=$('fPositionStatus').value;p.contracts=num($('fContracts').value)||1;p.pointValue=num($('fPointValue').value)||1;p.entry=num($('fEntry').value);p.target=num($('fTarget').value);p.stop=num($('fStop').value);p.zone=num($('fZone').value);p.why=$('fWhy').value;p.rule=$('fRule').value;p.updatedAt=new Date().toISOString();upsertTrade(p);$('saveMsg').textContent='Trade wird in der Cloud gespeichert...';scheduleSave();renderAll();show('plan');setTimeout(fetchYahoo,500)}
+async function savePlan(){
+  const editingTrade=currentTrade();
+  const isNew=!editingTrade;
+  const p=editingTrade?{...editingTrade}:blankTrade();
+
+  p.market=$('fMarket').value.trim()||'Unbenannter Trade';
+  p.symbol=$('fSymbol').value.trim()||'CUSTOM';
+  p.direction=$('fDirection').value;
+  p.positionStatus=$('fPositionStatus').value;
+  p.contracts=num($('fContracts').value)||1;
+  p.pointValue=num($('fPointValue').value)||1;
+  p.entry=num($('fEntry').value);
+  p.target=num($('fTarget').value);
+  p.stop=num($('fStop').value);
+  p.zone=num($('fZone').value);
+  p.why=$('fWhy').value;
+  p.rule=$('fRule').value;
+  p.updatedAt=new Date().toISOString();
+
+  if(!Array.isArray(state.activeTrades)) state.activeTrades=[];
+  upsertTrade(p);
+  $('saveMsg').textContent=isNew?'Neuer Trade wird im Trading Desk gespeichert...':'Trade wird aktualisiert...';
+
+  // Neue Trades sollen nach dem Speichern als ruhige Karte im Trading Desk erscheinen.
+  // Details öffnen sich erst, wenn der Trade angeklickt wird.
+  if(isNew) selectedTradeId=null;
+
+  renderAll();
+  show('plan');
+
+  // Sofort speichern, damit PC und iPhone direkt denselben Trading Desk sehen.
+  await saveCloud();
+
+  if(p.symbol && p.symbol!=='CUSTOM'){
+    const oldSelected=selectedTradeId;
+    selectedTradeId=p.id;
+    setTimeout(async()=>{await fetchYahoo(); selectedTradeId=oldSelected; renderAll();},500);
+  }
+}
 async function fetchYahoo(){const p=currentTrade();if(!p){return}const sym=p.symbol;if(!sym||sym==='CUSTOM'){$('liveMsg').textContent='Bitte ein Yahoo-Symbol hinterlegen.';return}const urls=[`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1m&range=1d`,`https://api.allorigins.win/raw?url=${encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1m&range=1d`)}`];$('liveMsg').textContent='Live-Kurs wird geladen...';for(const url of urls){try{const res=await fetch(url);if(!res.ok)throw new Error(res.status);const data=await res.json();const r=data.chart.result[0];const price=r.meta.regularMarketPrice||r.meta.previousClose;const prev=r.meta.chartPreviousClose||r.meta.previousClose||price;lastLiveById[p.id]={price,change:prev?((price-prev)/prev*100):0};p.current=price;p.updatedAt=new Date().toISOString();upsertTrade(p);$('liveMsg').textContent='Live-Kurs aktualisiert: '+new Date().toLocaleTimeString('de-DE');renderAll();scheduleSave();return}catch(e){console.warn('Yahoo fallback failed',e)}}$('liveMsg').textContent='Yahoo-Daten konnten nicht geladen werden. Kurs wird später erneut versucht.'}
 function renderTrades(){const arr=state.trades||[];$('tradeList').innerHTML=arr.map((t,i)=>{const pnl=tradePnlEuro(t);return `<div class="tradeRow"><div><b>${t.date} · ${t.market}</b><br>${t.direction} · ${t.closeType||'Abschluss'}${t.planDeviation?' · Planabweichung':''} · ${t.note||''}<br><small>Entry ${fmt(t.entry)} · Exit ${fmt(t.exit)} · ${t.result||0}P · ${t.contracts||1} Kontrakt(e) · ${euroShort(t.pointValue||1)}/P</small></div><div class="${pnl>=0?'plus':'minus'}">${euroShort(pnl)}</div><button data-deltrade="${i}">Löschen</button></div>`}).join('')||'<p>Noch keine beendeten Trades.</p>';document.querySelectorAll('[data-deltrade]').forEach(b=>b.addEventListener('click',()=>{state.trades.splice(Number(b.dataset.deltrade),1);renderTrades();renderChallenge();scheduleSave()}))}
 function brokerCloseStatus(p,current){if((p.positionStatus||'active')!=='active')return{mode:'pending',label:'Order geplant',exit:current,deviation:false};const dir=p.direction==='Long'?1:-1;const targetHit=dir===1?current>=num(p.target):current<=num(p.target);const stopHit=dir===1?current<=num(p.stop):current>=num(p.stop);if(targetHit)return{mode:'target',label:'Take-Profit erreicht',exit:num(p.target),deviation:false};if(stopHit)return{mode:'stop',label:'Stop-Loss erreicht',exit:num(p.stop),deviation:false};return{mode:'manual',label:'Trade läuft noch',exit:current,deviation:false}}
