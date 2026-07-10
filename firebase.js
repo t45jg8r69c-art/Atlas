@@ -28,3 +28,5 @@ window.AtlasCloud = {
   saveState(uid, state){ return setDoc(doc(db, 'users', uid, 'atlas', 'state'), {...state, updatedAt: serverTimestamp()}, {merge:true}); },
   watchState(uid, cb){ return onSnapshot(doc(db, 'users', uid, 'atlas', 'state'), snap => cb(snap.exists() ? snap.data() : null)); }
 };
+
+window.dispatchEvent(new Event('atlas-cloud-ready'));

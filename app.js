@@ -60,8 +60,53 @@ function exportJournal(){const text=state.trades.map(t=>`${t.date}; ${t.market};
 function toggleBox(i){state.challenge[i]=state.challenge[i]?null:new Date().toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});queueSave();renderChallenge()}
 function renderChallenge(){const done=state.challenge.filter(Boolean).length;$('wealthNow').textContent=done+' / 50';$('wealthPct').textContent=Math.round(done/50*100)+'%';$('lastCheck').textContent=state.challenge.filter(Boolean).slice(-1)[0]||'–';$('boxes').innerHTML=Array.from({length:50},(_,i)=>`<div class="box ${state.challenge[i]?'done':''}" data-box="${i}">${i+1}<br>${state.challenge[i]||''}</div>`).join('');document.querySelectorAll('[data-box]').forEach(b=>b.onclick=()=>toggleBox(Number(b.dataset.box)));}
 
-function wire(){makeNav();fillMarkets();$('loginBtn').onclick=()=>AtlasCloud.login($('authEmail').value,$('authPassword').value).catch(e=>$('authMsg').textContent=e.message);$('registerBtn').onclick=()=>AtlasCloud.register($('authEmail').value,$('authPassword').value).catch(e=>$('authMsg').textContent=e.message);$('logoutBtn').onclick=()=>AtlasCloud.logout();$('savePlanBtn').onclick=savePlan;$('refreshYahooBtn').onclick=fetchYahoo;$('closeTradeBtn').onclick=closeTrade;$('exportJournalBtn').onclick=exportJournal;$('hkcmFile').onchange=e=>loadImage(e.target.files[0],'hkcm');$('tvFile').onchange=e=>loadImage(e.target.files[0],'tv');$('modalClose').onclick=()=>$('imgModal').classList.remove('show');$('imgModal').onclick=e=>{if(e.target.id==='imgModal')$('imgModal').classList.remove('show')};}
+function authErrorText(e){
+  const code = e && e.code ? e.code : '';
+  if(code.includes('email-already-in-use')) return 'Diese E-Mail ist bereits registriert. Bitte auf Anmelden klicken.';
+  if(code.includes('weak-password')) return 'Passwort ist zu kurz. Bitte mindestens 6 Zeichen verwenden.';
+  if(code.includes('invalid-email')) return 'Bitte eine gültige E-Mail-Adresse eingeben.';
+  if(code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) return 'Anmeldung fehlgeschlagen. Bitte E-Mail und Passwort prüfen oder zuerst registrieren.';
+  return e && e.message ? e.message : 'Unbekannter Firebase-Fehler.';
+}
+
+function wire(){makeNav();fillMarkets();
+  $('loginBtn').onclick=async()=>{
+    $('authMsg').textContent='Anmeldung läuft…';
+    try{await AtlasCloud.login($('authEmail').value.trim(),$('authPassword').value);$('authMsg').textContent='Angemeldet.';}
+    catch(e){$('authMsg').textContent=authErrorText(e);}
+  };
+  $('registerBtn').onclick=async()=>{
+    $('authMsg').textContent='Registrierung läuft…';
+    try{await AtlasCloud.register($('authEmail').value.trim(),$('authPassword').value);$('authMsg').textContent='Registriert. Cloud wird geladen…';}
+    catch(e){$('authMsg').textContent=authErrorText(e);}
+  };
+  $('logoutBtn').onclick=()=>AtlasCloud.logout();$('savePlanBtn').onclick=savePlan;$('refreshYahooBtn').onclick=fetchYahoo;$('closeTradeBtn').onclick=closeTrade;$('exportJournalBtn').onclick=exportJournal;$('hkcmFile').onchange=e=>loadImage(e.target.files[0],'hkcm');$('tvFile').onchange=e=>loadImage(e.target.files[0],'tv');$('modalClose').onclick=()=>$('imgModal').classList.remove('show');$('imgModal').onclick=e=>{if(e.target.id==='imgModal')$('imgModal').classList.remove('show')};}
 
 function startCloud(){AtlasCloud.onAuth(user=>{if(unsub){unsub();unsub=null} if(!user){uid=null;$('authScreen').classList.remove('hidden');$('app').classList.add('hidden');return} uid=user.uid;$('authScreen').classList.add('hidden');$('app').classList.remove('hidden');setCloud('Cloud verbunden: '+user.email);unsub=AtlasCloud.watchState(uid,remote=>{if(remote){applyingRemote=true;state={...state,...remote,plan:{...state.plan,...remote.plan},trades:remote.trades||[],challenge:remote.challenge||Array(50).fill(null)};saveLocal();loadForm();render();applyingRemote=false;setCloud('Cloud synchronisiert')}else{queueSave();}});});}
 
-loadLocal();wire();loadForm();render();startCloud();setInterval(()=>{if(uid&&state.plan.symbol)fetchYahoo()},60000);
+function initAtlas(){
+  if(!window.AtlasCloud){
+    $('authMsg').textContent='Firebase wurde noch nicht geladen. Bitte Seite neu laden.';
+    return;
+  }
+  $('authScreen').classList.remove('hidden');
+  $('app').classList.add('hidden');
+  loadLocal();
+  wire();
+  loadForm();
+  render();
+  startCloud();
+  setInterval(()=>{if(uid&&state.plan.symbol)fetchYahoo()},60000);
+}
+
+if(window.AtlasCloud){
+  initAtlas();
+}else{
+  window.addEventListener('atlas-cloud-ready', initAtlas, {once:true});
+  setTimeout(()=>{
+    if(!window.AtlasCloud){
+      const msg=document.getElementById('authMsg');
+      if(msg) msg.textContent='Firebase konnte nicht geladen werden. Internet prüfen und Strg+F5 drücken.';
+    }
+  },5000);
+}
