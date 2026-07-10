@@ -3,22 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Atlas V5.1 Cloud</title>
+  <title>Atlas V5.2 Cloud Sync</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
     <div class="auth-card">
-      <div class="logo big-logo">A</div>
+      <div class="logo">A</div>
       <div class="brand">ATLAS</div>
       <div class="tag">TRADE YOUR PLAN</div>
       <h1>Cloud Login</h1>
-      <p>Registriere dich einmal. Danach synchronisiert Atlas zwischen PC und iPhone.</p>
+      <p>Mit demselben Konto werden PC und iPhone synchronisiert.</p>
       <input id="authEmail" type="email" placeholder="E-Mail" autocomplete="email" />
       <input id="authPassword" type="password" placeholder="Passwort" autocomplete="current-password" />
-      <button class="primary" id="loginBtn">Anmelden</button>
-      <button class="secondary" id="registerBtn">Registrieren</button>
-      <div id="authMsg" class="msg"></div>
+      <div class="auth-actions">
+        <button id="btnLogin" class="primary">Anmelden</button>
+        <button id="btnRegister" class="secondary">Registrieren</button>
+      </div>
+      <p id="authMsg" class="msg"></p>
     </div>
   </div>
 
@@ -30,43 +32,46 @@
         <div class="tag">CLOUD FOUNDATION</div>
       </div>
       <nav id="nav" class="nav"></nav>
-      <div class="side-footer">
-        <div id="cloudStatus" class="cloud-status">Cloud wird verbunden…</div>
-        <button class="ghost" id="logoutBtn">Abmelden</button>
+      <div class="cloudBox">
+        <div id="cloudState">Cloud wird verbunden...</div>
+        <button id="btnLogout" class="smallBtn">Abmelden</button>
       </div>
     </aside>
 
     <main>
       <section id="plan" class="screen active">
-        <div class="topbar">
+        <div class="topline">
           <div>
             <div class="label">Atlas Brain</div>
-            <h1 id="brainHeadline">Plan prüfen</h1>
+            <h1>Plan prüfen</h1>
           </div>
-          <div class="risk-dot" id="riskDot" title="Risikoampel"></div>
+          <div class="statusCluster">
+            <span id="clockPill" class="statusPill">--:--</span>
+            <span id="syncPill" class="statusPill">Cloud</span>
+          </div>
         </div>
 
         <div class="grid">
           <div>
             <div class="card hero">
               <div class="label">Status</div>
-              <div id="phaseText" class="big green">✓ PLAN LÄUFT</div>
-              <div id="brainMood" class="big gold">Geduld</div>
+              <div id="mainStatus" class="big green">✓ PLAN LÄUFT</div>
+              <div id="mainPhase" class="big gold">Geduld</div>
               <p id="brainText">Der Markt bewegt sich innerhalb deines Plans.</p>
               <div class="progress"><div id="bar"></div></div>
-              <div class="scale"><span>Stop <b id="sStop">–</b></span><span>Einstieg <b id="sEntry">–</b></span><span class="gold">Jetzt</span><span>Ziel <b id="sTarget">–</b></span></div>
-              <div class="quote" id="mentorQuote">„Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.“</div>
+              <div class="scale"><span>Stop <b id="sStop">-</b></span><span>Einstieg <b id="sEntry">-</b></span><span>Jetzt</span><span>Ziel <b id="sTarget">-</b></span></div>
+              <div id="brainQuote" class="quote">„Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.“</div>
             </div>
 
-            <div class="card" id="decisionCard">
-              <div class="label">Entscheidungsmotor</div>
-              <h2 id="decisionTitle">Tradephase</h2>
-              <p id="decisionText">Atlas bewertet Einstieg, Stop, Ziel, Prüfzone und Risiko.</p>
+            <div id="decision" class="card hidden">
+              <div class="label">Entscheidungsmodus</div>
+              <h2 class="gold">Prüfzone erreicht</h2>
+              <p>Prüfe zuerst deinen ursprünglichen Plan. Keine spontane Entscheidung.</p>
             </div>
 
             <div class="card">
               <div class="label">Analysebilder</div>
-              <p>Bild antippen zum Vergrößern. Hinweis: In Sprint 5.1 werden Bilder als Cloud-Daten gespeichert. Große Bilder bitte sparsam nutzen.</p>
+              <p>Bild antippen zum Vergrößern. Screenshots werden in Sprint 5.2 als komprimierte Cloud-Daten gespeichert.</p>
               <div class="shots">
                 <div class="shot"><div class="label">HKCM Analyse</div><div id="hkcmView"></div></div>
                 <div class="shot"><div class="label">TradingView</div><div id="tvView"></div></div>
@@ -77,45 +82,61 @@
           <div>
             <div class="card">
               <div class="label">Marktidee</div>
-              <h1 id="marketTitle">–</h1>
-              <p id="directionLine">–</p>
-              <div class="stats">
-                <div class="stat"><b id="livePrice">–</b><br>Live-Kurs</div>
-                <div class="stat"><b id="liveChange">–</b><br>Veränderung</div>
+              <h2 id="marketTitle">-</h2>
+              <p id="directionLine">-</p>
+              <div class="stats two">
+                <div class="stat"><b id="livePrice">-</b><br>Live-Kurs</div>
+                <div class="stat"><b id="liveChange">-</b><br>Veränderung</div>
               </div>
-              <p id="liveStatus">Live-Daten noch nicht aktualisiert.</p>
-              <button class="secondary" id="refreshYahooBtn">Yahoo-Kurs aktualisieren</button>
+              <p id="liveMsg">Live-Daten noch nicht aktualisiert.</p>
+              <button id="btnYahoo" class="secondary">Yahoo-Kurs aktualisieren</button>
             </div>
 
-            <div class="card"><div class="label">Warum?</div><div id="whyList"></div></div>
+            <div class="card">
+              <div class="label">Risikoampel</div>
+              <div id="riskLamp" class="lamp"></div>
+            </div>
+
+            <div class="card">
+              <div class="label">Warum?</div>
+              <div id="whyList"></div>
+            </div>
 
             <div class="card">
               <div class="label">Trade-Daten</div>
               <div class="stats">
-                <div class="stat"><b id="dEntry">–</b><br>Einstieg</div>
-                <div class="stat"><b id="dTarget">–</b><br>Ziel</div>
-                <div class="stat"><b id="dStop">–</b><br>Stop</div>
-                <div class="stat"><b id="dCurrent">–</b><br>Aktueller Kurs</div>
+                <div class="stat"><b id="dEntry">-</b><br>Einstieg</div>
+                <div class="stat"><b id="dTarget">-</b><br>Ziel</div>
+                <div class="stat"><b id="dStop">-</b><br>Stop</div>
+                <div class="stat"><b id="dCurrent">-</b><br>Aktueller Kurs</div>
               </div>
             </div>
 
             <div class="card">
-              <div class="label">Abstände & Risiko</div>
+              <div class="label">Kennzahlen</div>
               <div class="stats">
-                <div class="stat"><b id="pEntry">–</b><br>Punkte bis Einstieg</div>
-                <div class="stat"><b id="pTarget">–</b><br>Punkte bis Ziel</div>
-                <div class="stat"><b id="pStop">–</b><br>Punkte bis Stop</div>
-                <div class="stat"><b id="crv">–</b><br>CRV</div>
-                <div class="stat"><b id="riskMoney">–</b><br>Risiko €</div>
-                <div class="stat"><b id="chanceMoney">–</b><br>Chance €</div>
+                <div class="stat"><b id="kCrv">-</b><br>CRV</div>
+                <div class="stat"><b id="kRisk">-</b><br>Risiko €</div>
+                <div class="stat"><b id="kChance">-</b><br>Chance €</div>
+                <div class="stat"><b id="kPhase">-</b><br>Tradephase</div>
               </div>
             </div>
 
             <div class="card">
+              <div class="label">Abstände</div>
+              <div class="stats">
+                <div class="stat"><b id="pEntry">-</b><br>Punkte bis Einstieg</div>
+                <div class="stat"><b id="pTarget">-</b><br>Punkte bis Ziel</div>
+                <div class="stat"><b id="pStop">-</b><br>Punkte bis Stop</div>
+                <div class="stat"><b id="pZone">-</b><br>Punkte bis Prüfzone</div>
+              </div>
+            </div>
+
+            <div class="card dangerCard">
               <div class="label">Trade abschließen</div>
-              <input id="closeResult" type="number" placeholder="Ergebnis in Punkten, z. B. 900 oder -300" />
+              <input id="closeResult" placeholder="Ergebnis in Punkten, optional" />
               <textarea id="closeNote" placeholder="Abschlussnotiz"></textarea>
-              <button class="primary" id="closeTradeBtn">Trade abschließen & ins Journal</button>
+              <button id="btnCloseTrade" class="primary">Aktiven Trade ins Journal übernehmen</button>
             </div>
           </div>
         </div>
@@ -123,29 +144,29 @@
 
       <section id="create" class="screen">
         <div class="card">
-          <div class="label">Trade-Editor</div>
-          <h1>Plan eingeben</h1>
+          <div class="label">Trade-Eingabe</div>
+          <h1>Plan anlegen</h1>
           <label>Markt / Future</label>
           <select id="fMarketSelect"></select>
-          <input id="fCustomMarket" class="hidden" placeholder="Eigener Marktname" />
-          <input id="fCustomSymbol" class="hidden" placeholder="Yahoo Symbol, z. B. NQ=F" />
+          <input id="fMarket" placeholder="Marktname" />
+          <input id="fSymbol" placeholder="Yahoo Symbol" />
           <select id="fDirection"><option>Long</option><option>Short</option></select>
-          <input id="fContracts" placeholder="Kontrakte, z. B. 1" />
-          <input id="fPointValue" type="number" placeholder="Punktwert in €, z. B. 5" />
-          <input id="fEntry" type="number" placeholder="Einstieg" />
-          <input id="fTarget" type="number" placeholder="Ziel" />
-          <input id="fStop" type="number" placeholder="Stop" />
-          <input id="fZone" type="number" placeholder="Nächste Prüfzone" />
+          <input id="fContracts" placeholder="Kontrakte, z. B. 1" inputmode="decimal" />
+          <input id="fPointValue" placeholder="Punktwert in €, z. B. 1" inputmode="decimal" />
+          <input id="fEntry" placeholder="Einstieg" inputmode="decimal" />
+          <input id="fTarget" placeholder="Ziel" inputmode="decimal" />
+          <input id="fStop" placeholder="Stop" inputmode="decimal" />
+          <input id="fZone" placeholder="Nächste Prüfzone" inputmode="decimal" />
           <textarea id="fWhy" placeholder="Warum? Je Zeile ein Punkt"></textarea>
           <textarea id="fRule" placeholder="Mentor-Regel"></textarea>
         </div>
 
         <div class="card">
           <div class="label">Screenshots</div>
-          <div class="uploadBox"><b>HKCM Analyse</b><input type="file" id="hkcmFile" accept="image/*" /><div id="hkcmPreview"></div></div>
-          <div class="uploadBox"><b>TradingView Screenshot</b><input type="file" id="tvFile" accept="image/*" /><div id="tvPreview"></div></div>
-          <button class="primary" id="savePlanBtn">Plan speichern</button>
-          <div id="saveMsg" class="msg"></div>
+          <div class="uploadBox"><b>HKCM Analyse</b><input id="hkcmFile" type="file" accept="image/*" /><div id="hkcmPreview"></div></div>
+          <div class="uploadBox"><b>TradingView</b><input id="tvFile" type="file" accept="image/*" /><div id="tvPreview"></div></div>
+          <button id="btnSavePlan" class="primary">Plan in Cloud speichern</button>
+          <p id="saveMsg" class="msg"></p>
         </div>
       </section>
 
@@ -153,7 +174,7 @@
         <div class="card">
           <div class="label">Trading Journal</div>
           <h1>Beendete Trades</h1>
-          <button class="secondary" id="exportJournalBtn">Journal exportieren</button>
+          <button id="btnExportJournal" class="secondary">Journal als Datei exportieren</button>
           <div id="tradeList"></div>
         </div>
       </section>
@@ -162,19 +183,25 @@
         <div class="card">
           <div class="label">Großes Ziel</div>
           <h1>1 Mio Challenge</h1>
-          <div class="stats"><div class="stat"><b id="wealthNow">0 / 50</b><br>Abgehakt</div><div class="stat"><b id="wealthPct">0%</b><br>Fortschritt</div><div class="stat"><b id="lastCheck">–</b><br>Letzter Haken</div></div>
-          <p>Tippe ein Kästchen an, um es mit Zeitstempel abzuhaken oder wieder zu entfernen.</p>
+          <div class="stats">
+            <div class="stat"><b id="wealthNow">0 / 50</b><br>Abgehakt</div>
+            <div class="stat"><b id="wealthPct">0%</b><br>Fortschritt</div>
+            <div class="stat"><b id="lastCheck">–</b><br>Letzter Haken</div>
+          </div>
+          <p>Tippe ein Kästchen an. Änderungen werden mit der Cloud synchronisiert.</p>
         </div>
-        <div class="card"><div class="label">50 × 20.000 €</div><div class="challengeGrid" id="boxes"></div></div>
+        <div class="card"><div class="challengeGrid" id="boxes"></div></div>
       </section>
     </main>
-
-    <div class="bottom" id="bottom"></div>
   </div>
 
-  <div class="modal" id="imgModal"><button class="modalClose" id="modalClose">Schließen</button><img id="modalImg" alt="Screenshot Vollbild" /></div>
+  <div id="bottom" class="bottom"></div>
+  <div id="imgModal" class="modal"><button id="modalClose" class="modalClose">Schließen</button><img id="modalImg" alt="Screenshot" /></div>
 
-  <script type="module" src="firebase.js"></script>
-  <script type="module" src="app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

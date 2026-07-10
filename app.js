@@ -1,112 +1,49 @@
-const $ = (id)=>document.getElementById(id);
 const tabs=[['plan','Mein Plan'],['create','Eingabe'],['journal','Journal'],['challenge','Challenge']];
 const markets=[
-  {name:'Dow Jones Future',symbol:'YM=F',pointValue:5},
-  {name:'Nasdaq 100 Future',symbol:'NQ=F',pointValue:20},
-  {name:'S&P 500 Future',symbol:'ES=F',pointValue:50},
-  {name:'Russell 2000 Future',symbol:'RTY=F',pointValue:50},
-  {name:'DAX Future',symbol:'FDAX.DE',pointValue:25},
-  {name:'Gold Future',symbol:'GC=F',pointValue:100},
-  {name:'Silber Future',symbol:'SI=F',pointValue:5000},
-  {name:'WTI Öl Future',symbol:'CL=F',pointValue:1000},
-  {name:'Brent Öl Future',symbol:'BZ=F',pointValue:1000},
-  {name:'Copper Future',symbol:'HG=F',pointValue:25000},
-  {name:'US Dollar Index Future',symbol:'DX=F',pointValue:1000},
-  {name:'Benutzerdefiniert',symbol:'CUSTOM',pointValue:1}
+  ['YM=F','Dow Jones Future','Dow Jones Future'],['NQ=F','Nasdaq 100 Future','Nasdaq 100 Future'],['ES=F','S&P 500 Future','S&P 500 Future'],['RTY=F','Russell 2000 Future','Russell 2000 Future'],['FDAX.EX','DAX Future','DAX Future'],['GC=F','Gold Future','Gold Future'],['SI=F','Silber Future','Silber Future'],['HG=F','Kupfer Future','Kupfer Future'],['CL=F','WTI Öl Future','WTI Öl Future'],['BZ=F','Brent Öl Future','Brent Öl Future'],['DX=F','US Dollar Index Future','US Dollar Index Future'],['EURUSD=X','EUR/USD','EUR/USD'],['BTC-USD','Bitcoin','Bitcoin'],['CUSTOM','Benutzerdefiniert','']
 ];
-let uid=null, unsub=null, applyingRemote=false, saveTimer=null;
-let state={
-  plan:{market:'Dow Jones Future',symbol:'YM=F',direction:'Long',contracts:1,pointValue:5,entry:52900,target:54045,stop:52380,current:52988,zone:53500,why:'Laufende blaue Welle (v)\nEinstieg auf relevanten Fib-Niveau der Subwelle (ii)',rule:'Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.',hkcm:'',tv:'',liveChange:null,lastLive:null},
+const defaultState={
+  plan:{market:'Dow Jones Future',symbol:'YM=F',direction:'Long',contracts:1,pointValue:1,entry:52900,target:54045,stop:52380,current:52988,zone:53500,why:'Laufende blaue Welle (v)\nEinstieg auf relevantem Fib-Niveau der Subwelle (ii)',rule:'Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.',hkcm:'',tv:''},
   trades:[],
-  challenge:Array(50).fill(null)
+  challenge:[],
+  settings:{autoYahoo:false},
+  updatedAt:null
 };
-
-function fmt(n){return Number(n||0).toLocaleString('de-DE',{maximumFractionDigits:2})}
-function pts(n){return (n>0?'+':'')+fmt(n)+'P'}
-function num(v){return Number(v||0)}
-function dist(a,b){return Math.round(Math.abs(num(a)-num(b))*100)/100}
+let state=structuredClone(defaultState), user=null, unsub=null, saving=false, saveTimer=null, lastLive=null;
+const $=id=>document.getElementById(id);
+function fmt(n){const x=Number(n);return Number.isFinite(x)?x.toLocaleString('de-DE',{maximumFractionDigits:2}):'-'}
+function num(v){return Number(String(v??'').replace(',','.'))}
+function pts(n){return (n>=0?'+':'')+fmt(n)+'P'}
+function dist(a,b){return Math.round(Math.abs(num(a)-num(b)))}
 function money(n){return Number(n||0).toLocaleString('de-DE',{style:'currency',currency:'EUR',maximumFractionDigits:0})}
-function current(){return num(state.plan.current || state.plan.lastLive || state.plan.entry)}
-function contracts(){return Number(String(state.plan.contracts||1).replace(',','.'))||1}
-function pointValue(){return num(state.plan.pointValue || 1)}
-function saveLocal(){localStorage.setItem('atlasStateV51',JSON.stringify(state))}
-function loadLocal(){try{const s=JSON.parse(localStorage.getItem('atlasStateV51')||'null');if(s)state={...state,...s,plan:{...state.plan,...s.plan},challenge:s.challenge||state.challenge,trades:s.trades||[]}}catch(e){}}
-function queueSave(){saveLocal(); if(!uid||applyingRemote)return; clearTimeout(saveTimer); saveTimer=setTimeout(()=>{AtlasCloud.saveState(uid, cleanState()).then(()=>setCloud('Cloud gespeichert')).catch(e=>setCloud('Cloud Fehler: '+e.message));},500)}
-function cleanState(){return {plan:state.plan,trades:state.trades,challenge:state.challenge}}
-function setCloud(t){$('cloudStatus').textContent=t}
-
-function makeNav(){const html=tabs.map((t,i)=>`<button data-tab="${t[0]}" class="${i?'':'active'}">${t[1]}</button>`).join('');$('nav').innerHTML=html;$('bottom').innerHTML=html;document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>show(b.dataset.tab));}
+function makeNav(){const html=tabs.map((t,i)=>`<button data-tab="${t[0]}" class="${i?'':'active'}">${t[1]}</button>`).join('');$('nav').innerHTML=html;$('bottom').innerHTML=html;document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.tab)))}
 function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));scrollTo(0,0)}
-
-function fillMarkets(){ $('fMarketSelect').innerHTML=markets.map(m=>`<option value="${m.symbol}">${m.name}</option>`).join(''); $('fMarketSelect').onchange=()=>{const custom=$('fMarketSelect').value==='CUSTOM';$('fCustomMarket').classList.toggle('hidden',!custom);$('fCustomSymbol').classList.toggle('hidden',!custom);const m=markets.find(x=>x.symbol===$('fMarketSelect').value);if(m&&!custom)$('fPointValue').value=m.pointValue}; }
-
-function imgHtml(src){return src?`<img src="${src}" class="open-img">`:`<div class="emptyShot">Noch kein Screenshot<br>über Eingabe hinzufügen</div>`}
-function wireImages(){document.querySelectorAll('.open-img').forEach(img=>img.onclick=()=>{ $('modalImg').src=img.src; $('imgModal').classList.add('show'); });}
-function loadImage(file,type){ if(!file)return; const r=new FileReader(); r.onload=()=>{state.plan[type]=r.result; queueSave(); loadForm(); render();}; r.readAsDataURL(file); }
-
-function loadForm(){const p=state.plan; const known=markets.find(m=>m.symbol===p.symbol);$('fMarketSelect').value=known?p.symbol:'CUSTOM';$('fCustomMarket').classList.toggle('hidden',!!known);$('fCustomSymbol').classList.toggle('hidden',!!known);$('fCustomMarket').value=p.market||'';$('fCustomSymbol').value=p.symbol||'';$('fDirection').value=p.direction||'Long';$('fContracts').value=p.contracts||1;$('fPointValue').value=p.pointValue||1;$('fEntry').value=p.entry||'';$('fTarget').value=p.target||'';$('fStop').value=p.stop||'';$('fZone').value=p.zone||'';$('fWhy').value=p.why||'';$('fRule').value=p.rule||'';$('hkcmPreview').innerHTML=imgHtml(p.hkcm);$('tvPreview').innerHTML=imgHtml(p.tv);wireImages();}
-
-function render(){const p=state.plan,c=current();$('marketTitle').textContent=`${p.market||'–'} · ${p.direction||'–'}`;$('directionLine').textContent=`${p.contracts||1} Kontrakt(e) · ${p.symbol||'–'}`;$('dEntry').textContent=fmt(p.entry);$('dTarget').textContent=fmt(p.target);$('dStop').textContent=fmt(p.stop);$('dCurrent').textContent=fmt(c);$('sStop').textContent=fmt(p.stop);$('sEntry').textContent=fmt(p.entry);$('sTarget').textContent=fmt(p.target);$('livePrice').textContent=p.lastLive?fmt(p.lastLive):'–';$('liveChange').textContent=p.liveChange==null?'–':pts(p.liveChange);$('liveStatus').textContent=p.lastLive?`Letzte Aktualisierung: ${p.lastLiveTime||'–'}`:'Live-Daten noch nicht aktualisiert.';$('whyList').innerHTML=(p.why||'').split('\n').filter(Boolean).map(x=>`<div class="pill">✓ ${x}</div>`).join('') || '<p>Noch keine Analyse hinterlegt.</p>';$('mentorQuote').textContent='„'+(p.rule||'Erst Plan prüfen, dann handeln.')+'“';$('pEntry').textContent=pts(dist(c,p.entry));$('pTarget').textContent=pts(dist(p.target,c));$('pStop').textContent=pts(dist(c,p.stop)); const riskPts=dist(p.entry,p.stop), chancePts=dist(p.target,p.entry), crv=riskPts?chancePts/riskPts:0;$('crv').textContent=crv?crv.toFixed(2):'–';$('riskMoney').textContent=money(riskPts*pointValue()*contracts());$('chanceMoney').textContent=money(chancePts*pointValue()*contracts()); const min=Math.min(num(p.stop),num(p.target)),max=Math.max(num(p.stop),num(p.target));$('bar').style.width=Math.max(0,Math.min(100,(c-min)/(max-min)*100))+'%';$('hkcmView').innerHTML=imgHtml(p.hkcm);$('tvView').innerHTML=imgHtml(p.tv);wireImages();brain();renderTrades();renderChallenge();}
-
-function brain(){const p=state.plan,c=current(),long=p.direction==='Long';let phase='✓ PLAN LÄUFT',mood='Geduld',text='Der Markt bewegt sich innerhalb deines Plans.',decision='Keine spontane Entscheidung. Prüfe zuerst die ursprüngliche Analyse.',risk='green'; const near=(a,b,range)=>dist(a,b)<=range; const range=Math.max(10,dist(p.entry,p.stop)*0.15); if((long&&c<p.entry)||(!long&&c>p.entry)){phase='VOR EINSTIEG';mood='Warten';text='Nicht hinterherlaufen. Der Markt muss zu deinem geplanten Einstieg kommen.';decision='FOMO-Risiko: Kein Einstieg außerhalb deines Plans.';risk='green'} if((long&&c>=p.entry)||(!long&&c<=p.entry)){phase='✓ POSITION AKTIV';mood='Plan halten';text='Der Trade ist aktiv. Vermeide unnötige Eingriffe.';decision='Halte dich an Einstieg, Ziel, Stop und Mentorregel.';risk='green'} if(p.zone&&near(c,p.zone,range)){phase='PRÜFZONE';mood='Ruhig prüfen';text='Prüfzone erreicht. Erst Plan prüfen, dann handeln.';decision='Atlas blendet deine ursprüngliche Analyse ein. Entscheide objektiv.';risk='orange'} if(near(c,p.stop,range)){phase='STOP-NÄHE';mood='Keine Angstentscheidung';text='Der Markt nähert sich dem Stop. Prüfe ausschließlich deine Invalidierungsregel.';decision='Nicht aus Angst schließen und keinen Stop verschieben.';risk='red'} if(near(c,p.target,range)){phase='ZIELBEREICH';mood='Keine Euphorie';text='Zielbereich erreicht. Folge deinem Ausstiegsplan.';decision='Nicht gierig werden. Plane den Ausstieg nach deiner Regel.';risk='orange'} $('phaseText').textContent=phase;$('brainMood').textContent=mood;$('brainText').textContent=text;$('brainHeadline').textContent=mood;$('decisionTitle').textContent=phase;$('decisionText').textContent=decision;$('riskDot').className='risk-dot '+(risk==='red'?'red':risk==='orange'?'orange':'');}
-
-function savePlan(){const sym=$('fMarketSelect').value;const marketObj=markets.find(m=>m.symbol===sym);const custom=sym==='CUSTOM';state.plan={...state.plan,market:custom?$('fCustomMarket').value:marketObj.name,symbol:custom?$('fCustomSymbol').value:marketObj.symbol,direction:$('fDirection').value,contracts:$('fContracts').value||1,pointValue:num($('fPointValue').value)||1,entry:num($('fEntry').value),target:num($('fTarget').value),stop:num($('fStop').value),zone:num($('fZone').value),why:$('fWhy').value,rule:$('fRule').value}; if(!state.plan.entry||!state.plan.target||!state.plan.stop){$('saveMsg').textContent='Bitte Einstieg, Ziel und Stop ausfüllen.';return;} $('saveMsg').textContent='Plan gespeichert und Cloud-Sync gestartet.'; queueSave(); fetchYahoo(); render(); show('plan');}
-
-async function fetchYahoo(){const p=state.plan;if(!p.symbol)return; $('liveStatus').textContent='Yahoo-Daten werden geladen…'; const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(p.symbol)}?range=1d&interval=1m`; const proxies=[`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,`https://corsproxy.io/?${encodeURIComponent(url)}`]; for(const proxy of proxies){try{const res=await fetch(proxy); if(!res.ok)throw new Error('HTTP '+res.status); const data=await res.json(); const r=data.chart.result?.[0]; const meta=r?.meta; const price=meta?.regularMarketPrice || meta?.previousClose; if(price){const old=state.plan.current||price; state.plan.current=price; state.plan.lastLive=price; state.plan.liveChange=price-old; state.plan.lastLiveTime=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}); queueSave(); render(); return;}}catch(e){console.warn(e)}} $('liveStatus').textContent='Yahoo konnte nicht geladen werden. Prüfe Symbol oder später erneut versuchen.';}
-
-function closeTrade(){const r=num($('closeResult').value); if(!r){alert('Bitte Ergebnis in Punkten eintragen.');return} const p=state.plan; state.trades.unshift({id:Date.now(),date:new Date().toLocaleString('de-DE'),market:p.market,direction:p.direction,result:r,note:$('closeNote').value||'',symbol:p.symbol}); $('closeResult').value='';$('closeNote').value=''; queueSave(); renderTrades(); show('journal');}
-function renderTrades(){const list=$('tradeList'); if(!state.trades.length){list.innerHTML='<p>Noch keine beendeten Trades.</p>';return} list.innerHTML=state.trades.map(t=>`<div class="tradeRow"><div><b>${t.date} · ${t.market}</b><br><span>${t.direction} · ${t.note||''}</span></div><div>${t.result>=0?'Gewinn':'Verlust'}</div><div class="${t.result>=0?'plus':'minus'}">${pts(t.result)}</div><button class="ghost" data-del="${t.id}">×</button></div>`).join(''); document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{state.trades=state.trades.filter(t=>String(t.id)!==String(b.dataset.del));queueSave();renderTrades();});}
-function exportJournal(){const text=state.trades.map(t=>`${t.date}; ${t.market}; ${t.direction}; ${t.result} Punkte; ${t.note||''}`).join('\n'); const blob=new Blob([`Atlas Journal\n\n${text}`],{type:'text/plain;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='atlas-journal.txt'; a.click();}
-function toggleBox(i){state.challenge[i]=state.challenge[i]?null:new Date().toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});queueSave();renderChallenge()}
-function renderChallenge(){const done=state.challenge.filter(Boolean).length;$('wealthNow').textContent=done+' / 50';$('wealthPct').textContent=Math.round(done/50*100)+'%';$('lastCheck').textContent=state.challenge.filter(Boolean).slice(-1)[0]||'–';$('boxes').innerHTML=Array.from({length:50},(_,i)=>`<div class="box ${state.challenge[i]?'done':''}" data-box="${i}">${i+1}<br>${state.challenge[i]||''}</div>`).join('');document.querySelectorAll('[data-box]').forEach(b=>b.onclick=()=>toggleBox(Number(b.dataset.box)));}
-
-function authErrorText(e){
-  const code = e && e.code ? e.code : '';
-  if(code.includes('email-already-in-use')) return 'Diese E-Mail ist bereits registriert. Bitte auf Anmelden klicken.';
-  if(code.includes('weak-password')) return 'Passwort ist zu kurz. Bitte mindestens 6 Zeichen verwenden.';
-  if(code.includes('invalid-email')) return 'Bitte eine gültige E-Mail-Adresse eingeben.';
-  if(code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) return 'Anmeldung fehlgeschlagen. Bitte E-Mail und Passwort prüfen oder zuerst registrieren.';
-  return e && e.message ? e.message : 'Unbekannter Firebase-Fehler.';
-}
-
-function wire(){makeNav();fillMarkets();
-  $('loginBtn').onclick=async()=>{
-    $('authMsg').textContent='Anmeldung läuft…';
-    try{await AtlasCloud.login($('authEmail').value.trim(),$('authPassword').value);$('authMsg').textContent='Angemeldet.';}
-    catch(e){$('authMsg').textContent=authErrorText(e);}
-  };
-  $('registerBtn').onclick=async()=>{
-    $('authMsg').textContent='Registrierung läuft…';
-    try{await AtlasCloud.register($('authEmail').value.trim(),$('authPassword').value);$('authMsg').textContent='Registriert. Cloud wird geladen…';}
-    catch(e){$('authMsg').textContent=authErrorText(e);}
-  };
-  $('logoutBtn').onclick=()=>AtlasCloud.logout();$('savePlanBtn').onclick=savePlan;$('refreshYahooBtn').onclick=fetchYahoo;$('closeTradeBtn').onclick=closeTrade;$('exportJournalBtn').onclick=exportJournal;$('hkcmFile').onchange=e=>loadImage(e.target.files[0],'hkcm');$('tvFile').onchange=e=>loadImage(e.target.files[0],'tv');$('modalClose').onclick=()=>$('imgModal').classList.remove('show');$('imgModal').onclick=e=>{if(e.target.id==='imgModal')$('imgModal').classList.remove('show')};}
-
-function startCloud(){AtlasCloud.onAuth(user=>{if(unsub){unsub();unsub=null} if(!user){uid=null;$('authScreen').classList.remove('hidden');$('app').classList.add('hidden');return} uid=user.uid;$('authScreen').classList.add('hidden');$('app').classList.remove('hidden');setCloud('Cloud verbunden: '+user.email);unsub=AtlasCloud.watchState(uid,remote=>{if(remote){applyingRemote=true;state={...state,...remote,plan:{...state.plan,...remote.plan},trades:remote.trades||[],challenge:remote.challenge||Array(50).fill(null)};saveLocal();loadForm();render();applyingRemote=false;setCloud('Cloud synchronisiert')}else{queueSave();}});});}
-
-function initAtlas(){
-  if(!window.AtlasCloud){
-    $('authMsg').textContent='Firebase wurde noch nicht geladen. Bitte Seite neu laden.';
-    return;
-  }
-  $('authScreen').classList.remove('hidden');
-  $('app').classList.add('hidden');
-  loadLocal();
-  wire();
-  loadForm();
-  render();
-  startCloud();
-  setInterval(()=>{if(uid&&state.plan.symbol)fetchYahoo()},60000);
-}
-
-if(window.AtlasCloud){
-  initAtlas();
-}else{
-  window.addEventListener('atlas-cloud-ready', initAtlas, {once:true});
-  setTimeout(()=>{
-    if(!window.AtlasCloud){
-      const msg=document.getElementById('authMsg');
-      if(msg) msg.textContent='Firebase konnte nicht geladen werden. Internet prüfen und Strg+F5 drücken.';
-    }
-  },5000);
-}
+function cloudMsg(t){$('cloudState').textContent=t;$('syncPill').textContent=t}
+function stateRef(){return atlasFirebase.db.collection('users').doc(user.uid).collection('atlas').doc('state')}
+function scheduleSave(){if(!user||saving)return;cloudMsg('Speichert...');clearTimeout(saveTimer);saveTimer=setTimeout(saveCloud,450)}
+async function saveCloud(){if(!user)return;try{saving=true;state.updatedAt=new Date().toISOString();await stateRef().set(state,{merge:true});cloudMsg('Cloud synchronisiert')}catch(e){cloudMsg('Cloud Fehler');console.error(e)}finally{saving=false}}
+function startCloud(uid){if(unsub)unsub();unsub=stateRef().onSnapshot(async snap=>{if(!snap.exists){await stateRef().set(state);return}const data=snap.data();state={...structuredClone(defaultState),...data,plan:{...defaultState.plan,...(data.plan||{})},settings:{...defaultState.settings,...(data.settings||{})}};renderAll();cloudMsg('Cloud synchronisiert')},err=>{console.error(err);cloudMsg('Cloud Fehler')})}
+async function login(){try{await atlasFirebase.auth.signInWithEmailAndPassword($('authEmail').value.trim(),$('authPassword').value);$('authMsg').textContent=''}catch(e){$('authMsg').textContent=authError(e)}}
+async function register(){try{await atlasFirebase.auth.createUserWithEmailAndPassword($('authEmail').value.trim(),$('authPassword').value);$('authMsg').textContent=''}catch(e){$('authMsg').textContent=authError(e)}}
+function authError(e){console.error(e);if(e.code==='auth/email-already-in-use')return 'Diese E-Mail ist bereits registriert. Bitte anmelden.';if(e.code==='auth/invalid-credential'||e.code==='auth/wrong-password')return 'Anmeldung fehlgeschlagen. E-Mail oder Passwort prüfen.';if(e.code==='auth/weak-password')return 'Passwort muss mindestens 6 Zeichen haben.';return 'Fehler: '+(e.message||e.code)}
+atlasFirebase.auth.onAuthStateChanged(u=>{user=u;if(u){$('authScreen').classList.add('hidden');$('app').classList.remove('hidden');cloudMsg('Cloud verbunden');startCloud(u.uid)}else{$('authScreen').classList.remove('hidden');$('app').classList.add('hidden');if(unsub)unsub()}});
+function renderAll(){loadForm();renderPlan();renderTrades();renderChallenge()}
+function loadForm(){const p=state.plan;$('fMarketSelect').innerHTML=markets.map(m=>`<option value="${m[0]}">${m[1]}</option>`).join('');$('fMarketSelect').value=markets.some(m=>m[0]===p.symbol)?p.symbol:'CUSTOM';$('fMarket').value=p.market;$('fSymbol').value=p.symbol;$('fDirection').value=p.direction;$('fContracts').value=p.contracts;$('fPointValue').value=p.pointValue;$('fEntry').value=p.entry;$('fTarget').value=p.target;$('fStop').value=p.stop;$('fZone').value=p.zone;$('fWhy').value=p.why;$('fRule').value=p.rule;$('hkcmPreview').innerHTML=imgHtml(p.hkcm);$('tvPreview').innerHTML=imgHtml(p.tv)}
+function renderPlan(){const p=state.plan;const current=num(p.current)||num(p.entry);$('marketTitle').textContent=`${p.market} · ${p.direction}`;$('directionLine').textContent=`${p.contracts} Kontrakt(e) · ${p.symbol}`;$('dEntry').textContent=fmt(p.entry);$('dTarget').textContent=fmt(p.target);$('dStop').textContent=fmt(p.stop);$('dCurrent').textContent=fmt(current);$('sStop').textContent=fmt(p.stop);$('sEntry').textContent=fmt(p.entry);$('sTarget').textContent=fmt(p.target);$('whyList').innerHTML=String(p.why||'').split('\n').filter(Boolean).map(x=>`<div class="pill">✓ ${x}</div>`).join('')||'<p>Keine Analyse hinterlegt.</p>';$('pEntry').textContent=pts(dist(current,p.entry));$('pTarget').textContent=pts(dist(p.target,current));$('pStop').textContent=pts(dist(current,p.stop));$('pZone').textContent=pts(dist(p.zone,current));$('bar').style.width=progressPct(p,current)+'%';$('hkcmView').innerHTML=imgHtml(p.hkcm);$('tvView').innerHTML=imgHtml(p.tv);const k=calcMetrics(p,current);$('kCrv').textContent=k.crv;$('kRisk').textContent=money(k.risk);$('kChance').textContent=money(k.chance);$('kPhase').textContent=k.phase;renderBrain(p,current,k);if(lastLive){$('livePrice').textContent=fmt(lastLive.price);$('liveChange').textContent=(lastLive.change>=0?'+':'')+fmt(lastLive.change)+'%'}else{$('livePrice').textContent='-';$('liveChange').textContent='-'}}
+function progressPct(p,c){const stop=num(p.stop),target=num(p.target);if(target===stop)return 0;return Math.min(100,Math.max(0,(c-stop)/(target-stop)*100))}
+function calcMetrics(p,current){const dir=p.direction==='Long'?1:-1;const riskPts=Math.abs(num(p.entry)-num(p.stop));const chancePts=Math.abs(num(p.target)-num(p.entry));const contracts=num(p.contracts)||1,pv=num(p.pointValue)||1;const crv=riskPts? (chancePts/riskPts).toFixed(2):'-';let phase='Vor Einstieg';if((dir===1&&current>=num(p.entry))||(dir===-1&&current<=num(p.entry)))phase='Trade läuft';if(dist(current,p.zone)<=(riskPts*.15))phase='Prüfzone';if(dist(current,p.stop)<=(riskPts*.18))phase='Stopnähe';if(dist(current,p.target)<=(chancePts*.12))phase='Zielnähe';return{risk:riskPts*contracts*pv,chance:chancePts*contracts*pv,crv,phase}}
+function renderBrain(p,current,k){const lamp=$('riskLamp');lamp.className='lamp';let main='✓ PLAN LÄUFT',phase='Geduld',text='Der Markt bewegt sich innerhalb deines Plans.',quote=p.rule||'Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.';if(k.phase==='Vor Einstieg'){phase='Warten';text='Dein Einstieg ist noch nicht erreicht. Nicht hinterherlaufen. Der Markt kommt zu dir oder der Trade findet nicht statt.'}if(k.phase==='Trade läuft'){phase='Plan halten';text='Der Trade läuft. Greife nur ein, wenn deine vorher definierte Struktur objektiv verletzt wird.'}if(k.phase==='Prüfzone'){phase='Prüfzone';text='Du bist in der Prüfzone. Prüfe Analyse und Mentorregel, bevor du emotional reagierst.';lamp.classList.add('yellow');$('decision').classList.remove('hidden')}else{$('decision').classList.add('hidden')}if(k.phase==='Stopnähe'){main='⚠ INVALIDIERUNG PRÜFEN';phase='Kontrolle';text='Der Markt ist nahe am Stop. Prüfe ausschließlich deine Invalidierungsregel. Nicht hoffen, nicht verschieben.';lamp.classList.add('red')}if(k.phase==='Zielnähe'){phase='Zielbereich';text='Der Markt ist nahe am Ziel. Halte dich an deinen Ausstiegsplan. Keine Euphorie-Entscheidung.';lamp.classList.add('yellow')}if(k.crv!=='-'&&Number(k.crv)<1.5)lamp.classList.add('yellow');$('mainStatus').textContent=main;$('mainPhase').textContent=phase;$('brainText').textContent=text;$('brainQuote').textContent='„'+quote+'“'}
+function imgHtml(src){return src?`<img src="${src}" class="zoomable">`:`<div class="emptyShot">Noch kein Screenshot<br>über Eingabe hinzufügen</div>`}
+async function compressImage(file){return new Promise(res=>{const img=new Image();const r=new FileReader();r.onload=()=>{img.onload=()=>{const max=1100;let w=img.width,h=img.height;if(w>max||h>max){const s=Math.min(max/w,max/h);w=Math.round(w*s);h=Math.round(h*s)}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',.72))};img.src=r.result};r.readAsDataURL(file)})}
+async function handleImage(e,type){const file=e.target.files[0];if(!file)return;state.plan[type]=await compressImage(file);renderAll();scheduleSave()}
+function savePlan(){const p=state.plan;p.market=$('fMarket').value;p.symbol=$('fSymbol').value;p.direction=$('fDirection').value;p.contracts=num($('fContracts').value)||1;p.pointValue=num($('fPointValue').value)||1;p.entry=num($('fEntry').value);p.target=num($('fTarget').value);p.stop=num($('fStop').value);p.zone=num($('fZone').value);p.why=$('fWhy').value;p.rule=$('fRule').value;$('saveMsg').textContent='Plan wird in der Cloud gespeichert...';scheduleSave();renderPlan();show('plan');setTimeout(fetchYahoo,500)}
+async function fetchYahoo(){const sym=state.plan.symbol;if(!sym||sym==='CUSTOM'){$('liveMsg').textContent='Bitte ein Yahoo-Symbol hinterlegen.';return}const urls=[`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1m&range=1d`,`https://api.allorigins.win/raw?url=${encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1m&range=1d`)}`];$('liveMsg').textContent='Live-Kurs wird geladen...';for(const url of urls){try{const res=await fetch(url);if(!res.ok)throw new Error(res.status);const data=await res.json();const r=data.chart.result[0];const price=r.meta.regularMarketPrice||r.meta.previousClose;const prev=r.meta.chartPreviousClose||r.meta.previousClose||price;lastLive={price,change:prev?((price-prev)/prev*100):0};state.plan.current=price;$('liveMsg').textContent='Live-Kurs aktualisiert: '+new Date().toLocaleTimeString('de-DE');renderPlan();scheduleSave();return}catch(e){console.warn('Yahoo fallback failed',e)}}$('liveMsg').textContent='Yahoo-Daten konnten nicht geladen werden. Kurs wird später erneut versucht.'}
+function renderTrades(){const arr=state.trades||[];$('tradeList').innerHTML=arr.map((t,i)=>`<div class="tradeRow"><div><b>${t.date} · ${t.market}</b><br>${t.direction} · ${t.note||''}</div><div class="${Number(t.result)>=0?'plus':'minus'}">${pts(Number(t.result)||0)}</div><button data-deltrade="${i}">Löschen</button></div>`).join('')||'<p>Noch keine beendeten Trades.</p>';document.querySelectorAll('[data-deltrade]').forEach(b=>b.addEventListener('click',()=>{state.trades.splice(Number(b.dataset.deltrade),1);renderTrades();scheduleSave()}))}
+function closeTrade(){const p=state.plan;let result=num($('closeResult').value);if(!Number.isFinite(result)||result===0)result=(num(p.current)-num(p.entry))*(p.direction==='Long'?1:-1);state.trades.unshift({date:new Date().toLocaleDateString('de-DE'),market:p.market,direction:p.direction,result:Math.round(result),note:$('closeNote').value||'Trade abgeschlossen',symbol:p.symbol});$('closeResult').value='';$('closeNote').value='';renderTrades();scheduleSave();show('journal')}
+function exportJournal(){const txt=(state.trades||[]).map(t=>`${t.date}; ${t.market}; ${t.direction}; ${t.result}P; ${t.note||''}`).join('\n');const blob=new Blob([txt],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='atlas-journal.txt';a.click();URL.revokeObjectURL(a.href)}
+function toggleBox(i){state.challenge[i]=state.challenge[i]?null:new Date().toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});renderChallenge();scheduleSave()}
+function renderChallenge(){const c=state.challenge||[];const done=c.filter(Boolean).length;$('wealthNow').textContent=done+' / 50';$('wealthPct').textContent=Math.round(done/50*100)+'%';$('lastCheck').textContent=c.filter(Boolean).slice(-1)[0]||'–';$('boxes').innerHTML=Array.from({length:50},(_,i)=>`<div class="box ${c[i]?'done':''}" data-box="${i}">${i+1}<br>${c[i]||''}</div>`).join('');document.querySelectorAll('[data-box]').forEach(b=>b.addEventListener('click',()=>toggleBox(Number(b.dataset.box))))}
+function marketSelect(){const val=$('fMarketSelect').value;const m=markets.find(x=>x[0]===val);if(!m)return;if(val!=='CUSTOM'){$('fSymbol').value=m[0];$('fMarket').value=m[2]}}
+function clock(){$('clockPill').textContent=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}
+function boot(){makeNav();$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnExportJournal').onclick=exportJournal;$('fMarketSelect').onchange=marketSelect;$('hkcmFile').onchange=e=>handleImage(e,'hkcm');$('tvFile').onchange=e=>handleImage(e,'tv');$('modalClose').onclick=()=>$('imgModal').classList.remove('show');$('imgModal').onclick=e=>{if(e.target.id==='imgModal')$('imgModal').classList.remove('show')};document.addEventListener('click',e=>{if(e.target.classList.contains('zoomable')){$('modalImg').src=e.target.src;$('imgModal').classList.add('show')}});clock();setInterval(clock,30000);renderAll()}
+boot();
