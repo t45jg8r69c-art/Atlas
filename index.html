@@ -133,10 +133,19 @@
             </div>
 
             <div class="card dangerCard">
-              <div class="label">Trade abschließen</div>
-              <input id="closeResult" placeholder="Ergebnis in Punkten, optional" />
-              <textarea id="closeNote" placeholder="Abschlussnotiz"></textarea>
-              <button id="btnCloseTrade" class="primary">Aktiven Trade ins Journal übernehmen</button>
+              <div class="label">Broker-Logik · Trade abschließen</div>
+              <p id="closeInfo">Atlas prüft Stop-Loss, Take-Profit und manuellen Ausstieg.</p>
+              <label>Abschlussart</label>
+              <select id="closeMode">
+                <option value="auto">Automatisch erkennen</option>
+                <option value="target">Take-Profit erreicht</option>
+                <option value="stop">Stop-Loss erreicht</option>
+                <option value="manual">Manuell geschlossen / Planabweichung</option>
+              </select>
+              <input id="closePrice" placeholder="Schlusskurs nur bei manuellem Ausstieg" inputmode="decimal" />
+              <textarea id="closeNote" placeholder="Abschlussnotiz / Grund bei manuellem Ausstieg"></textarea>
+              <button id="btnCloseTrade" class="primary">Trade gemäß Broker-Logik ins Journal übernehmen</button>
+              <p id="closeCalc" class="msg"></p>
             </div>
           </div>
         </div>
