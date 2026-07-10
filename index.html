@@ -3,196 +3,178 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Atlas V4 Sprint 4</title>
+  <title>Atlas V5.1 Cloud</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand-block">
+  <div id="authScreen" class="auth-screen">
+    <div class="auth-card">
+      <div class="logo big-logo">A</div>
+      <div class="brand">ATLAS</div>
+      <div class="tag">TRADE YOUR PLAN</div>
+      <h1>Cloud Login</h1>
+      <p>Registriere dich einmal. Danach synchronisiert Atlas zwischen PC und iPhone.</p>
+      <input id="authEmail" type="email" placeholder="E-Mail" autocomplete="email" />
+      <input id="authPassword" type="password" placeholder="Passwort" autocomplete="current-password" />
+      <button class="primary" id="loginBtn">Anmelden</button>
+      <button class="secondary" id="registerBtn">Registrieren</button>
+      <div id="authMsg" class="msg"></div>
+    </div>
+  </div>
+
+  <div id="app" class="app hidden">
+    <aside class="side">
+      <div class="logoBox">
         <div class="logo">A</div>
         <div class="brand">ATLAS</div>
-        <div class="sub">TRADE YOUR PLAN</div>
+        <div class="tag">CLOUD FOUNDATION</div>
       </div>
-      <nav class="nav">
-        <button class="active" data-screen="dashboard">Dashboard</button>
-        <button data-screen="create">Eingabe</button>
-        <button data-screen="plan">Mein Plan</button>
-        <button data-screen="journal">Journal</button>
-        <button data-screen="challenge">Challenge</button>
-      </nav>
+      <nav id="nav" class="nav"></nav>
+      <div class="side-footer">
+        <div id="cloudStatus" class="cloud-status">Cloud wird verbunden…</div>
+        <button class="ghost" id="logoutBtn">Abmelden</button>
+      </div>
     </aside>
 
     <main>
-      <header class="topbar">
-        <div>
-          <div class="eyebrow">Atlas V4 · Sprint 4</div>
-          <h1 id="headline">Dashboard</h1>
+      <section id="plan" class="screen active">
+        <div class="topbar">
+          <div>
+            <div class="label">Atlas Brain</div>
+            <h1 id="brainHeadline">Plan prüfen</h1>
+          </div>
+          <div class="risk-dot" id="riskDot" title="Risikoampel"></div>
         </div>
-        <div class="status-stack">
-          <div class="market-status" id="marketStatus">Lade Marktstatus…</div>
-          <div class="live-status" id="liveStatus">Live-Daten bereit</div>
-        </div>
-      </header>
 
-      <section id="dashboard" class="screen active">
-        <div class="grid two">
-          <article class="card hero-card">
-            <div class="eyebrow">Aktueller Fokus</div>
-            <h2 id="dashTitle">Noch kein aktiver Trade</h2>
-            <p id="dashText">Lege unter „Eingabe“ deinen nächsten Trade an. Atlas begleitet dich danach aktiv durch die Tradephase.</p>
-            <div class="hero-actions">
-              <button class="primary" data-go="create">Trade anlegen</button>
-              <button class="secondary" data-go="plan">Mein Plan</button>
+        <div class="grid">
+          <div>
+            <div class="card hero">
+              <div class="label">Status</div>
+              <div id="phaseText" class="big green">✓ PLAN LÄUFT</div>
+              <div id="brainMood" class="big gold">Geduld</div>
+              <p id="brainText">Der Markt bewegt sich innerhalb deines Plans.</p>
+              <div class="progress"><div id="bar"></div></div>
+              <div class="scale"><span>Stop <b id="sStop">–</b></span><span>Einstieg <b id="sEntry">–</b></span><span class="gold">Jetzt</span><span>Ziel <b id="sTarget">–</b></span></div>
+              <div class="quote" id="mentorQuote">„Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.“</div>
             </div>
-          </article>
-          <article class="card">
-            <div class="eyebrow">Atlas Gehirn</div>
-            <h2 id="brainTitle">Warte auf Plan</h2>
-            <p id="brainMessage">Atlas bewertet deinen Trade erst, wenn Einstieg, Stop, Ziel und aktueller Kurs vorhanden sind.</p>
-            <div class="risk-pill" id="riskPill">Neutral</div>
-          </article>
-        </div>
-        <div class="grid three stats-grid">
-          <div class="stat"><b id="statMarket">–</b><span>Markt</span></div>
-          <div class="stat"><b id="statPrice">–</b><span>Aktueller Kurs</span></div>
-          <div class="stat"><b id="statCrv">–</b><span>CRV</span></div>
+
+            <div class="card" id="decisionCard">
+              <div class="label">Entscheidungsmotor</div>
+              <h2 id="decisionTitle">Tradephase</h2>
+              <p id="decisionText">Atlas bewertet Einstieg, Stop, Ziel, Prüfzone und Risiko.</p>
+            </div>
+
+            <div class="card">
+              <div class="label">Analysebilder</div>
+              <p>Bild antippen zum Vergrößern. Hinweis: In Sprint 5.1 werden Bilder als Cloud-Daten gespeichert. Große Bilder bitte sparsam nutzen.</p>
+              <div class="shots">
+                <div class="shot"><div class="label">HKCM Analyse</div><div id="hkcmView"></div></div>
+                <div class="shot"><div class="label">TradingView</div><div id="tvView"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="card">
+              <div class="label">Marktidee</div>
+              <h1 id="marketTitle">–</h1>
+              <p id="directionLine">–</p>
+              <div class="stats">
+                <div class="stat"><b id="livePrice">–</b><br>Live-Kurs</div>
+                <div class="stat"><b id="liveChange">–</b><br>Veränderung</div>
+              </div>
+              <p id="liveStatus">Live-Daten noch nicht aktualisiert.</p>
+              <button class="secondary" id="refreshYahooBtn">Yahoo-Kurs aktualisieren</button>
+            </div>
+
+            <div class="card"><div class="label">Warum?</div><div id="whyList"></div></div>
+
+            <div class="card">
+              <div class="label">Trade-Daten</div>
+              <div class="stats">
+                <div class="stat"><b id="dEntry">–</b><br>Einstieg</div>
+                <div class="stat"><b id="dTarget">–</b><br>Ziel</div>
+                <div class="stat"><b id="dStop">–</b><br>Stop</div>
+                <div class="stat"><b id="dCurrent">–</b><br>Aktueller Kurs</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="label">Abstände & Risiko</div>
+              <div class="stats">
+                <div class="stat"><b id="pEntry">–</b><br>Punkte bis Einstieg</div>
+                <div class="stat"><b id="pTarget">–</b><br>Punkte bis Ziel</div>
+                <div class="stat"><b id="pStop">–</b><br>Punkte bis Stop</div>
+                <div class="stat"><b id="crv">–</b><br>CRV</div>
+                <div class="stat"><b id="riskMoney">–</b><br>Risiko €</div>
+                <div class="stat"><b id="chanceMoney">–</b><br>Chance €</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="label">Trade abschließen</div>
+              <input id="closeResult" type="number" placeholder="Ergebnis in Punkten, z. B. 900 oder -300" />
+              <textarea id="closeNote" placeholder="Abschlussnotiz"></textarea>
+              <button class="primary" id="closeTradeBtn">Trade abschließen & ins Journal</button>
+            </div>
+          </div>
         </div>
       </section>
 
       <section id="create" class="screen">
-        <article class="card">
-          <div class="eyebrow">Trade-Eingabe</div>
-          <h2>Neuen Plan erstellen</h2>
-          <div class="form-grid">
-            <label>Markt / Future
-              <select id="marketSelect"></select>
-            </label>
-            <label>Yahoo Symbol
-              <input id="symbolInput" placeholder="z. B. NQ=F" />
-            </label>
-            <label>Richtung
-              <select id="directionInput"><option>Long</option><option>Short</option></select>
-            </label>
-            <label>Kontrakte
-              <input id="contractsInput" placeholder="z. B. 2 Kontrakte" />
-            </label>
-            <label>Einstieg
-              <input id="entryInput" type="number" step="0.01" />
-            </label>
-            <label>Stop
-              <input id="stopInput" type="number" step="0.01" />
-            </label>
-            <label>Ziel
-              <input id="targetInput" type="number" step="0.01" />
-            </label>
-            <label>Nächste Prüfzone
-              <input id="zoneInput" type="number" step="0.01" />
-            </label>
-            <label>Punktwert je Kontrakt (€)
-              <input id="pointValueInput" type="number" step="0.01" value="1" />
-            </label>
-          </div>
-          <label>Warum ist dieser Trade gültig?
-            <textarea id="whyInput" placeholder="Je Zeile ein Argument"></textarea>
-          </label>
-          <label>Mentor-Regel
-            <textarea id="ruleInput" placeholder="Was darfst du während dieses Trades nicht vergessen?"></textarea>
-          </label>
-          <div class="upload-grid">
-            <label class="upload-box">HKCM Screenshot
-              <input type="file" id="hkcmInput" accept="image/*" />
-              <div id="hkcmPreview" class="image-preview">Noch kein Bild</div>
-            </label>
-            <label class="upload-box">TradingView Screenshot
-              <input type="file" id="tvInput" accept="image/*" />
-              <div id="tvPreview" class="image-preview">Noch kein Bild</div>
-            </label>
-          </div>
-          <div id="validationBox" class="validation"></div>
-          <button class="primary" id="savePlanBtn">Plan speichern</button>
-        </article>
-      </section>
-
-      <section id="plan" class="screen">
-        <div class="grid two">
-          <article class="card hero-card">
-            <div class="eyebrow">Mein Plan</div>
-            <h2 id="planTitle">Kein aktiver Trade</h2>
-            <p id="phaseText">Lege zuerst einen Trade an.</p>
-            <div class="progress"><div id="progressBar"></div></div>
-            <div class="scale"><span>Stop</span><span>Einstieg</span><span>Ziel</span></div>
-            <div class="brain-box">
-              <strong id="planBrainTitle">Atlas Gehirn</strong>
-              <p id="planBrainMessage">Noch keine Bewertung möglich.</p>
-            </div>
-            <button class="danger" id="closeTradeBtn">Trade abschließen</button>
-          </article>
-          <article class="card">
-            <div class="eyebrow">Kennzahlen</div>
-            <div class="metrics">
-              <div><b id="mCurrent">–</b><span>Live / aktueller Kurs</span></div>
-              <div><b id="mEntry">–</b><span>Einstieg</span></div>
-              <div><b id="mStop">–</b><span>Stop</span></div>
-              <div><b id="mTarget">–</b><span>Ziel</span></div>
-              <div><b id="mToEntry">–</b><span>Punkte bis Einstieg</span></div>
-              <div><b id="mToStop">–</b><span>Punkte bis Stop</span></div>
-              <div><b id="mToTarget">–</b><span>Punkte bis Ziel</span></div>
-              <div><b id="mCrv">–</b><span>CRV</span></div>
-              <div><b id="mRiskMoney">–</b><span>Risiko €</span></div>
-              <div><b id="mChanceMoney">–</b><span>Chance €</span></div>
-            </div>
-          </article>
+        <div class="card">
+          <div class="label">Trade-Editor</div>
+          <h1>Plan eingeben</h1>
+          <label>Markt / Future</label>
+          <select id="fMarketSelect"></select>
+          <input id="fCustomMarket" class="hidden" placeholder="Eigener Marktname" />
+          <input id="fCustomSymbol" class="hidden" placeholder="Yahoo Symbol, z. B. NQ=F" />
+          <select id="fDirection"><option>Long</option><option>Short</option></select>
+          <input id="fContracts" placeholder="Kontrakte, z. B. 1" />
+          <input id="fPointValue" type="number" placeholder="Punktwert in €, z. B. 5" />
+          <input id="fEntry" type="number" placeholder="Einstieg" />
+          <input id="fTarget" type="number" placeholder="Ziel" />
+          <input id="fStop" type="number" placeholder="Stop" />
+          <input id="fZone" type="number" placeholder="Nächste Prüfzone" />
+          <textarea id="fWhy" placeholder="Warum? Je Zeile ein Punkt"></textarea>
+          <textarea id="fRule" placeholder="Mentor-Regel"></textarea>
         </div>
-        <div class="grid two">
-          <article class="card">
-            <div class="eyebrow">Analysebilder</div>
-            <div class="upload-grid">
-              <div><h3>HKCM</h3><div id="hkcmPlan" class="image-preview">Kein Bild</div></div>
-              <div><h3>TradingView</h3><div id="tvPlan" class="image-preview">Kein Bild</div></div>
-            </div>
-          </article>
-          <article class="card">
-            <div class="eyebrow">Warum & Regel</div>
-            <div id="whyList"></div>
-            <blockquote id="mentorRule">–</blockquote>
-          </article>
+
+        <div class="card">
+          <div class="label">Screenshots</div>
+          <div class="uploadBox"><b>HKCM Analyse</b><input type="file" id="hkcmFile" accept="image/*" /><div id="hkcmPreview"></div></div>
+          <div class="uploadBox"><b>TradingView Screenshot</b><input type="file" id="tvFile" accept="image/*" /><div id="tvPreview"></div></div>
+          <button class="primary" id="savePlanBtn">Plan speichern</button>
+          <div id="saveMsg" class="msg"></div>
         </div>
       </section>
 
       <section id="journal" class="screen">
-        <article class="card">
-          <div class="eyebrow">Journal</div>
-          <h2>Beendete Trades</h2>
-          <button class="secondary" id="exportBtn">PDF / Druckansicht erzeugen</button>
-          <div id="journalList" class="journal-list"></div>
-        </article>
+        <div class="card">
+          <div class="label">Trading Journal</div>
+          <h1>Beendete Trades</h1>
+          <button class="secondary" id="exportJournalBtn">Journal exportieren</button>
+          <div id="tradeList"></div>
+        </div>
       </section>
 
       <section id="challenge" class="screen">
-        <article class="card">
-          <div class="eyebrow">1 Mio Challenge</div>
-          <h2>50 × 20.000 €</h2>
-          <div class="grid three stats-grid">
-            <div class="stat"><b id="challengeDone">0 / 50</b><span>Abgehakt</span></div>
-            <div class="stat"><b id="challengeMoney">0 €</b><span>Fortschritt</span></div>
-            <div class="stat"><b id="challengeLast">–</b><span>Letzter Haken</span></div>
-          </div>
-          <div id="challengeGrid" class="challenge-grid"></div>
-        </article>
+        <div class="card">
+          <div class="label">Großes Ziel</div>
+          <h1>1 Mio Challenge</h1>
+          <div class="stats"><div class="stat"><b id="wealthNow">0 / 50</b><br>Abgehakt</div><div class="stat"><b id="wealthPct">0%</b><br>Fortschritt</div><div class="stat"><b id="lastCheck">–</b><br>Letzter Haken</div></div>
+          <p>Tippe ein Kästchen an, um es mit Zeitstempel abzuhaken oder wieder zu entfernen.</p>
+        </div>
+        <div class="card"><div class="label">50 × 20.000 €</div><div class="challengeGrid" id="boxes"></div></div>
       </section>
     </main>
+
+    <div class="bottom" id="bottom"></div>
   </div>
 
-  <nav class="bottom-nav">
-    <button class="active" data-screen="dashboard">Start</button>
-    <button data-screen="create">Eingabe</button>
-    <button data-screen="plan">Plan</button>
-    <button data-screen="journal">Journal</button>
-    <button data-screen="challenge">Ziel</button>
-  </nav>
+  <div class="modal" id="imgModal"><button class="modalClose" id="modalClose">Schließen</button><img id="modalImg" alt="Screenshot Vollbild" /></div>
 
-  <div id="imageModal" class="image-modal"><button>Schließen</button><img alt="Analysebild" /></div>
-  <script src="app.js"></script>
+  <script type="module" src="firebase.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
