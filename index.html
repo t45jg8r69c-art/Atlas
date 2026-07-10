@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Atlas V5.3 Cloud Complete</title>
+  <title>Atlas V5.6 Broker UI</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -102,33 +102,29 @@
               <div id="whyList"></div>
             </div>
 
-            <div class="card">
-              <div class="label">Trade-Daten</div>
-              <div class="stats">
-                <div class="stat"><b id="dEntry">-</b><br>Einstieg</div>
-                <div class="stat"><b id="dTarget">-</b><br>Ziel</div>
-                <div class="stat"><b id="dStop">-</b><br>Stop</div>
-                <div class="stat"><b id="dCurrent">-</b><br>Aktueller Kurs</div>
+            <div class="card brokerCard">
+              <div class="label">Broker-Position</div>
+              <div class="brokerTop">
+                <div>
+                  <span id="brokerSide" class="brokerSide">Kaufen</span>
+                  <b id="brokerContracts">1,0</b>
+                  <span>zu</span>
+                  <b id="brokerEntry">-</b>
+                </div>
+                <div id="brokerPhase" class="brokerPhase">-</div>
               </div>
-            </div>
-
-            <div class="card">
-              <div class="label">Kennzahlen</div>
-              <div class="stats">
-                <div class="stat"><b id="kCrv">-</b><br>CRV</div>
-                <div class="stat"><b id="kRisk">-</b><br>Risiko €</div>
-                <div class="stat"><b id="kChance">-</b><br>Chance €</div>
-                <div class="stat"><b id="kPhase">-</b><br>Tradephase</div>
+              <div class="brokerPriceLine">
+                <span>Live-Kurs</span>
+                <b id="brokerCurrent">-</b>
               </div>
-            </div>
-
-            <div class="card">
-              <div class="label">Abstände</div>
-              <div class="stats">
-                <div class="stat"><b id="pEntry">-</b><br>Punkte bis Einstieg</div>
-                <div class="stat"><b id="pTarget">-</b><br>Punkte bis Ziel</div>
-                <div class="stat"><b id="pStop">-</b><br>Punkte bis Stop</div>
-                <div class="stat"><b id="pZone">-</b><br>Punkte bis Prüfzone</div>
+              <div class="brokerLevels">
+                <div class="brokerLevel stop"><span>Stop-Loss</span><b id="brokerStop">-</b></div>
+                <div class="brokerLevel target"><span>Take-Profit</span><b id="brokerTarget">-</b></div>
+              </div>
+              <div class="brokerFocus">
+                <div class="label">Aktuell relevant</div>
+                <h2 id="brokerRelevantDistance">-</h2>
+                <p id="brokerRelevantText">Atlas zeigt nur den Abstand, der in der aktuellen Phase wichtig ist.</p>
               </div>
             </div>
 
@@ -159,13 +155,16 @@
           <select id="fMarketSelect"></select>
           <input id="fMarket" placeholder="Marktname" />
           <input id="fSymbol" placeholder="Yahoo Symbol" />
-          <select id="fDirection"><option>Long</option><option>Short</option></select>
+          <label>Kaufen / Verkaufen</label>
+          <select id="fDirection"><option value="Long">Kaufen / Long</option><option value="Short">Verkaufen / Short</option></select>
+          <label>Status</label>
+          <select id="fPositionStatus"><option value="active">Position aktiv</option><option value="planned">Order geplant / noch kein Einstieg</option></select>
           <input id="fContracts" placeholder="Kontrakte, z. B. 1" inputmode="decimal" />
           <input id="fPointValue" placeholder="Punktwert in €, z. B. 1" inputmode="decimal" />
           <input id="fEntry" placeholder="Einstieg" inputmode="decimal" />
-          <input id="fTarget" placeholder="Ziel" inputmode="decimal" />
-          <input id="fStop" placeholder="Stop" inputmode="decimal" />
-          <input id="fZone" placeholder="Nächste Prüfzone" inputmode="decimal" />
+          <input id="fStop" placeholder="Stop-Loss" inputmode="decimal" />
+          <input id="fTarget" placeholder="Take-Profit" inputmode="decimal" />
+          <input id="fZone" placeholder="Prüfzone, optional" inputmode="decimal" />
           <textarea id="fWhy" placeholder="Warum? Je Zeile ein Punkt"></textarea>
           <textarea id="fRule" placeholder="Mentor-Regel"></textarea>
         </div>
