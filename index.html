@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Atlas V5.2 Cloud Sync</title>
+  <title>Atlas V5.3 Cloud Complete</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -185,10 +185,14 @@
           <h1>1 Mio Challenge</h1>
           <div class="stats">
             <div class="stat"><b id="wealthNow">0 / 50</b><br>Abgehakt</div>
+            <div class="stat"><b id="wealthSaved">0 €</b><br>Gespart</div>
             <div class="stat"><b id="wealthPct">0%</b><br>Fortschritt</div>
+            <div class="stat"><b id="wealthOpen">1.000.000 €</b><br>Noch offen</div>
+            <div class="stat"><b id="nextMilestone">20.000 €</b><br>Nächster Meilenstein</div>
             <div class="stat"><b id="lastCheck">–</b><br>Letzter Haken</div>
           </div>
-          <p>Tippe ein Kästchen an. Änderungen werden mit der Cloud synchronisiert.</p>
+          <div class="progress challengeProgress"><div id="wealthBar"></div></div>
+          <p>Jedes Kästchen entspricht 20.000 €. Atlas summiert den Fortschritt automatisch und synchronisiert Änderungen mit der Cloud.</p>
         </div>
         <div class="card"><div class="challengeGrid" id="boxes"></div></div>
       </section>

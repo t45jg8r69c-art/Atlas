@@ -2,6 +2,9 @@ const tabs=[['plan','Mein Plan'],['create','Eingabe'],['journal','Journal'],['ch
 const markets=[
   ['YM=F','Dow Jones Future','Dow Jones Future'],['NQ=F','Nasdaq 100 Future','Nasdaq 100 Future'],['ES=F','S&P 500 Future','S&P 500 Future'],['RTY=F','Russell 2000 Future','Russell 2000 Future'],['FDAX.EX','DAX Future','DAX Future'],['GC=F','Gold Future','Gold Future'],['SI=F','Silber Future','Silber Future'],['HG=F','Kupfer Future','Kupfer Future'],['CL=F','WTI Öl Future','WTI Öl Future'],['BZ=F','Brent Öl Future','Brent Öl Future'],['DX=F','US Dollar Index Future','US Dollar Index Future'],['EURUSD=X','EUR/USD','EUR/USD'],['BTC-USD','Bitcoin','Bitcoin'],['CUSTOM','Benutzerdefiniert','']
 ];
+const CHALLENGE_BOX_VALUE=20000;
+const CHALLENGE_BOXES=50;
+const CHALLENGE_TARGET=CHALLENGE_BOX_VALUE*CHALLENGE_BOXES;
 const defaultState={
   plan:{market:'Dow Jones Future',symbol:'YM=F',direction:'Long',contracts:1,pointValue:1,entry:52900,target:54045,stop:52380,current:52988,zone:53500,why:'Laufende blaue Welle (v)\nEinstieg auf relevantem Fib-Niveau der Subwelle (ii)',rule:'Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.',hkcm:'',tv:''},
   trades:[],
@@ -16,6 +19,7 @@ function num(v){return Number(String(v??'').replace(',','.'))}
 function pts(n){return (n>=0?'+':'')+fmt(n)+'P'}
 function dist(a,b){return Math.round(Math.abs(num(a)-num(b)))}
 function money(n){return Number(n||0).toLocaleString('de-DE',{style:'currency',currency:'EUR',maximumFractionDigits:0})}
+function euroShort(n){return Number(n||0).toLocaleString('de-DE',{maximumFractionDigits:0})+' €'}
 function makeNav(){const html=tabs.map((t,i)=>`<button data-tab="${t[0]}" class="${i?'':'active'}">${t[1]}</button>`).join('');$('nav').innerHTML=html;$('bottom').innerHTML=html;document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.tab)))}
 function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));scrollTo(0,0)}
 function cloudMsg(t){$('cloudState').textContent=t;$('syncPill').textContent=t}
@@ -42,7 +46,26 @@ function renderTrades(){const arr=state.trades||[];$('tradeList').innerHTML=arr.
 function closeTrade(){const p=state.plan;let result=num($('closeResult').value);if(!Number.isFinite(result)||result===0)result=(num(p.current)-num(p.entry))*(p.direction==='Long'?1:-1);state.trades.unshift({date:new Date().toLocaleDateString('de-DE'),market:p.market,direction:p.direction,result:Math.round(result),note:$('closeNote').value||'Trade abgeschlossen',symbol:p.symbol});$('closeResult').value='';$('closeNote').value='';renderTrades();scheduleSave();show('journal')}
 function exportJournal(){const txt=(state.trades||[]).map(t=>`${t.date}; ${t.market}; ${t.direction}; ${t.result}P; ${t.note||''}`).join('\n');const blob=new Blob([txt],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='atlas-journal.txt';a.click();URL.revokeObjectURL(a.href)}
 function toggleBox(i){state.challenge[i]=state.challenge[i]?null:new Date().toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});renderChallenge();scheduleSave()}
-function renderChallenge(){const c=state.challenge||[];const done=c.filter(Boolean).length;$('wealthNow').textContent=done+' / 50';$('wealthPct').textContent=Math.round(done/50*100)+'%';$('lastCheck').textContent=c.filter(Boolean).slice(-1)[0]||'–';$('boxes').innerHTML=Array.from({length:50},(_,i)=>`<div class="box ${c[i]?'done':''}" data-box="${i}">${i+1}<br>${c[i]||''}</div>`).join('');document.querySelectorAll('[data-box]').forEach(b=>b.addEventListener('click',()=>toggleBox(Number(b.dataset.box))))}
+function renderChallenge(){
+  const c=state.challenge||[];
+  const done=c.filter(Boolean).length;
+  const saved=done*CHALLENGE_BOX_VALUE;
+  const open=Math.max(0,CHALLENGE_TARGET-saved);
+  const pct=Math.round(done/CHALLENGE_BOXES*100);
+  const next=Math.min(CHALLENGE_TARGET,(done+1)*CHALLENGE_BOX_VALUE);
+  $('wealthNow').textContent=done+' / '+CHALLENGE_BOXES;
+  $('wealthSaved').textContent=euroShort(saved);
+  $('wealthPct').textContent=pct+'%';
+  $('wealthOpen').textContent=euroShort(open);
+  $('nextMilestone').textContent=done>=CHALLENGE_BOXES?'Ziel erreicht':euroShort(next);
+  $('lastCheck').textContent=c.filter(Boolean).slice(-1)[0]||'–';
+  const bar=$('wealthBar'); if(bar)bar.style.width=pct+'%';
+  $('boxes').innerHTML=Array.from({length:CHALLENGE_BOXES},(_,i)=>{
+    const amount=(i+1)*CHALLENGE_BOX_VALUE;
+    return `<div class="box ${c[i]?'done':''}" data-box="${i}"><b>${i+1}</b><span>${euroShort(amount)}</span><small>${c[i]||''}</small></div>`;
+  }).join('');
+  document.querySelectorAll('[data-box]').forEach(b=>b.addEventListener('click',()=>toggleBox(Number(b.dataset.box))))
+}
 function marketSelect(){const val=$('fMarketSelect').value;const m=markets.find(x=>x[0]===val);if(!m)return;if(val!=='CUSTOM'){$('fSymbol').value=m[0];$('fMarket').value=m[2]}}
 function clock(){$('clockPill').textContent=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}
 function boot(){makeNav();$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnExportJournal').onclick=exportJournal;$('fMarketSelect').onchange=marketSelect;$('hkcmFile').onchange=e=>handleImage(e,'hkcm');$('tvFile').onchange=e=>handleImage(e,'tv');$('modalClose').onclick=()=>$('imgModal').classList.remove('show');$('imgModal').onclick=e=>{if(e.target.id==='imgModal')$('imgModal').classList.remove('show')};document.addEventListener('click',e=>{if(e.target.classList.contains('zoomable')){$('modalImg').src=e.target.src;$('imgModal').classList.add('show')}});clock();setInterval(clock,30000);renderAll()}
