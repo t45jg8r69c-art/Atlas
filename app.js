@@ -215,10 +215,11 @@ function normalizeState(data={}){let s={...structuredClone(defaultState),...data
 function currentTrade(){return (state.activeTrades||[]).find(t=>t.id===selectedTradeId)||null}
 function isCreateScreenActive(){return $('create')?.classList.contains('active')}
 function collectFormDraft(){
-  const active=currentTrade();
-  const base=formDraft||active||state.plan||{};
+  const active=formMode==='edit'?currentTrade():null;
+  const base=formDraft||active||(formMode==='new'?emptyTradeDraft():{});
   return{
-    id:base.id||null,
+    ...base,
+    id:base.id||uid(),
     market:$('fMarket').value,
     symbol:$('fSymbol').value,
     direction:$('fDirection').value,
@@ -233,7 +234,7 @@ function collectFormDraft(){
     rule:$('fRule').value,
     hkcm:base.hkcm||'',
     tv:base.tv||''
-  }
+  };
 }
 function markFormDirty(){
   if(!isCreateScreenActive())return;
@@ -245,6 +246,7 @@ function clearFormDraft(){
   formDraft=null;
   formDirty=false;
   formMode='none';
+  clearFileInputs();
 }
 function safeRenderAll(){
   renderDesk();
@@ -261,7 +263,7 @@ function show(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   $(id).classList.add('active');
   document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
-  if(id==='create'&&formDraft)loadForm(formDraft);
+  if(id==='create'){if(!formDraft){formMode='new';formDraft=emptyTradeDraft();formDirty=false;clearFileInputs()}loadForm(formDraft);}
   scrollTo(0,0);
 }
 function cloudMsg(t){$('cloudState').textContent=t;$('syncPill').textContent=t}
@@ -275,11 +277,45 @@ function authError(e){console.error(e);if(e.code==='auth/email-already-in-use')r
 atlasFirebase.auth.onAuthStateChanged(u=>{user=u;if(u){$('authScreen').classList.add('hidden');$('app').classList.remove('hidden');cloudMsg('Cloud verbunden');startCloud(u.uid);startMarketEngine()}else{$('authScreen').classList.remove('hidden');$('app').classList.add('hidden');if(unsub)unsub();stopMarketEngine()}});
 function renderAll(){safeRenderAll()}
 function blankTrade(){return {...tradeTemplate,id:uid(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}}
+function emptyTradeDraft(){
+  const now=new Date().toISOString();
+  return{
+    ...tradeTemplate,
+    id:uid(),
+    market:'Dow Jones Future',
+    symbol:'YM=F',
+    direction:'Long',
+    positionStatus:'planned',
+    contracts:1,
+    pointValue:1,
+    entry:'',
+    target:'',
+    stop:'',
+    current:'',
+    zone:'',
+    why:'',
+    rule:'Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.',
+    hkcm:'',
+    tv:'',
+    createdAt:now,
+    updatedAt:now,
+    originalPlan:null,
+    deviations:[],
+    mentorState:null,
+    brainState:'waiting'
+  };
+}
+function clearFileInputs(){
+  if($('hkcmFile'))$('hkcmFile').value='';
+  if($('tvFile'))$('tvFile').value='';
+}
+
 function startNewTrade(){
   selectedTradeId=null;
   formMode='new';
-  formDraft=blankTrade();
+  formDraft=emptyTradeDraft();
   formDirty=false;
+  clearFileInputs();
   loadForm(formDraft);
   $('saveMsg').textContent='Neuen Trade erfassen.';
   show('create');
@@ -290,6 +326,7 @@ function editSelectedTrade(){
   formMode='edit';
   formDraft=structuredClone(p);
   formDirty=false;
+  clearFileInputs();
   loadForm(formDraft);
   show('create');
 }
@@ -297,7 +334,7 @@ async function selectTrade(id){selectedTradeId=id;renderPlan();scrollTo(0,0);con
 function renderDesk(){const arr=state.activeTrades||[];$('activeTradeList').innerHTML=arr.map(t=>tradeDeskCard(t)).join('')||`<div class="emptyDesk"><h2>Noch kein aktiver Trade</h2><p>Lege deinen ersten Trade an. Atlas zeigt dir danach nur eine ruhige Übersicht und öffnet Details erst auf Klick.</p></div>`;document.querySelectorAll('[data-selecttrade]').forEach(b=>b.addEventListener('click',()=>selectTrade(b.dataset.selecttrade)));if($('tradeDetail'))$('tradeDetail').classList.toggle('hidden',!currentTrade())}
 function tradeDeskCard(t){const current=num(t.current)||num(t.entry);const s=tradeState(t,current);const close=brokerCloseStatus(t,current);const lampClass=close.mode==='stop'||s.key==='stop_approaching'?'red':(close.mode==='target'||s.key==='target_approaching'||s.key==='entry_approaching'?'yellow':'');const side=t.direction==='Long'?'Kaufen':'Verkaufen';const focus=deskFocus(t,current,s);return `<button class="activeTradeCard" data-state="${s.key}" data-selecttrade="${t.id}"><div class="miniLamp ${lampClass}"></div><div><b>${t.market}</b><span>${side} · ${fmt(t.contracts)} Kontrakt(e)</span></div><div class="deskMeta"><strong>${s.phase}</strong><span>${focus}</span></div></button>`}
 function deskFocus(p,current,s){if((p.positionStatus||'active')!=='active')return `${fmt(dist(current,p.entry))}P bis Einstieg`;if(s.key==='stop_hit')return 'Stop erreicht';if(s.key==='target_hit')return 'TP erreicht';if(s.key==='stop_approaching')return `${fmt(dist(current,p.stop))}P bis SL`;return `${fmt(dist(p.target,current))}P bis TP`}
-function loadForm(source=null){const p=source||((isCreateScreenActive()&&formDraft)?formDraft:(currentTrade()||state.plan||blankTrade()));$('formTitle').textContent=currentTrade()?'Trade bearbeiten':'Trade anlegen';$('btnSavePlan').textContent=currentTrade()?'Trade aktualisieren':'Neuen Trade speichern';$('fMarketSelect').innerHTML=markets.map(m=>`<option value="${m[0]}">${m[1]}</option>`).join('');$('fMarketSelect').value=markets.some(m=>m[0]===p.symbol)?p.symbol:'CUSTOM';$('fMarket').value=p.market;$('fSymbol').value=p.symbol;$('fDirection').value=p.direction;$('fPositionStatus').value=p.positionStatus||'active';$('fContracts').value=p.contracts;$('fPointValue').value=p.pointValue;$('fEntry').value=p.entry;$('fTarget').value=p.target;$('fStop').value=p.stop;$('fZone').value=p.zone;$('fWhy').value=p.why;$('fRule').value=p.rule;$('hkcmPreview').innerHTML=imgHtml(p.hkcm);$('tvPreview').innerHTML=imgHtml(p.tv);if($('accountStart'))$('accountStart').value=state.settings.accountStart||'';setTimeout(renderDeviationPanel,0)}
+function loadForm(source=null){const p=source||((isCreateScreenActive()&&formDraft)?formDraft:(currentTrade()||state.plan||blankTrade()));$('formTitle').textContent=formMode==='edit'?'Trade bearbeiten':'Trade anlegen';$('btnSavePlan').textContent=formMode==='edit'?'Trade aktualisieren':'Neuen Trade speichern';$('fMarketSelect').innerHTML=markets.map(m=>`<option value="${m[0]}">${m[1]}</option>`).join('');$('fMarketSelect').value=markets.some(m=>m[0]===p.symbol)?p.symbol:'CUSTOM';$('fMarket').value=p.market;$('fSymbol').value=p.symbol;$('fDirection').value=p.direction;$('fPositionStatus').value=p.positionStatus||'active';$('fContracts').value=p.contracts;$('fPointValue').value=p.pointValue;$('fEntry').value=p.entry;$('fTarget').value=p.target;$('fStop').value=p.stop;$('fZone').value=p.zone;$('fWhy').value=p.why;$('fRule').value=p.rule;$('hkcmPreview').innerHTML=imgHtml(p.hkcm);$('tvPreview').innerHTML=imgHtml(p.tv);if($('accountStart'))$('accountStart').value=state.settings.accountStart||'';setTimeout(renderDeviationPanel,0)}
 function renderPlan(){renderDesk();const p=currentTrade();if(!p){$('tradeDetail').classList.add('hidden');return}$('tradeDetail').classList.remove('hidden');const current=num(p.current)||num(p.entry);$('marketTitle').textContent=`${p.market} · ${p.direction==='Long'?'Kaufen / Long':'Verkaufen / Short'}`;$('directionLine').textContent=`${p.contracts} Kontrakt(e) · ${p.symbol}`;$('sStop').textContent=fmt(p.stop);$('sEntry').textContent=fmt(p.entry);$('sTarget').textContent=fmt(p.target);$('whyList').innerHTML=String(p.why||'').split('\n').filter(Boolean).map(x=>`<div class="pill">✓ ${x}</div>`).join('')||'<p>Keine Analyse hinterlegt.</p>';$('bar').style.width=progressPct(p,current)+'%';$('hkcmView').innerHTML=imgHtml(p.hkcm);$('tvView').innerHTML=imgHtml(p.tv);const k=tradeState(p,current);const mentor=mentorFor(p,k);renderBrain(p,current,k,mentor);renderBrokerCard(p,current,k);renderClosePanel(p,current);renderDeviationInfo(p);const last=lastLiveById[p.id]||(p.liveUpdatedAt?{price:current,change:Number(p.liveChange),source:p.dataSource,at:p.liveUpdatedAt}:null);if(last){$('livePrice').textContent=fmt(last.price);$('liveChange').textContent=Number.isFinite(Number(last.change))?((Number(last.change)>=0?'+':'')+fmt(last.change)+'%'):'-';if($('liveMsg'))$('liveMsg').textContent=`Live-Kurs aktualisiert${last.source?' · '+last.source:''}${last.at?' · '+new Date(last.at).toLocaleTimeString('de-DE'):''}`}else{$('livePrice').textContent=fmt(current);$('liveChange').textContent='-';if($('liveMsg'))$('liveMsg').textContent='Live-Daten werden automatisch geladen.'}}
 function renderBrokerCard(p,current,k){const side=p.direction==='Long'?'Kaufen':'Verkaufen';$('brokerSide').textContent=side;$('brokerSide').classList.toggle('sell',p.direction==='Short');$('brokerContracts').textContent=fmt(p.contracts);$('brokerEntry').textContent=fmt(p.entry);$('brokerCurrent').textContent=fmt(current);$('brokerStop').textContent=fmt(p.stop);$('brokerTarget').textContent=fmt(p.target);$('brokerPhase').textContent=k.phase;$('brokerRelevantDistance').textContent=k.headline;$('brokerRelevantText').textContent=k.text}
 function progressPct(p,c){const stop=num(p.stop),target=num(p.target);if(target===stop)return 0;return Math.min(100,Math.max(0,(c-stop)/(target-stop)*100))}
@@ -375,11 +412,51 @@ async function compressImage(file){
     reader.readAsDataURL(file);
   });
 }
+
+async function handleImage(e,type){
+  const input=e.target;
+  const file=input.files&&input.files[0];
+  if(!file)return;
+
+  try{
+    if($('saveMsg'))$('saveMsg').textContent='Screenshot wird verarbeitet...';
+    const image=await compressImage(file);
+
+    if(!isCreateScreenActive()){
+      throw new Error('Screenshot-Upload ist nur in der Eingabemaske möglich.');
+    }
+
+    if(!formDraft){
+      formDraft=formMode==='edit'&&currentTrade()
+        ? structuredClone(currentTrade())
+        : emptyTradeDraft();
+    }
+
+    formDraft={...collectFormDraft(),[type]:image};
+    formDirty=true;
+
+    const preview=$(type+'Preview');
+    if(preview)preview.innerHTML=imgHtml(image);
+
+    if($('saveMsg')){
+      $('saveMsg').textContent='Screenshot im Entwurf gespeichert. Bitte Trade speichern.';
+    }
+    renderDeviationPanel();
+  }catch(error){
+    console.error('Screenshot upload failed',error);
+    if($('saveMsg')){
+      $('saveMsg').textContent='Screenshot konnte nicht verarbeitet werden. Bitte JPG oder PNG erneut auswählen.';
+    }
+  }finally{
+    input.value='';
+  }
+}
+
 async function savePlan(){
   const editingTrade=formMode==='edit'?(currentTrade()||state.activeTrades.find(t=>t.id===formDraft?.id)):null;
   const isNew=formMode==='new'||!editingTrade;
   const deviationChanges=!isNew?pendingDeviationChanges():[];
-  const p=editingTrade?{...editingTrade}:blankTrade();
+  const p=editingTrade?{...editingTrade}:{...emptyTradeDraft(),id:formDraft?.id||uid(),createdAt:formDraft?.createdAt||new Date().toISOString()};
 
   p.market=$('fMarket').value.trim()||'Unbenannter Trade';
   p.symbol=$('fSymbol').value.trim()||'CUSTOM';
@@ -393,8 +470,8 @@ async function savePlan(){
   p.zone=num($('fZone').value);
   p.why=$('fWhy').value;
   p.rule=$('fRule').value;
-  p.hkcm=formDraft?.hkcm??p.hkcm;
-  p.tv=formDraft?.tv??p.tv;
+  p.hkcm=formDraft&&typeof formDraft.hkcm==='string'?formDraft.hkcm:'';
+  p.tv=formDraft&&typeof formDraft.tv==='string'?formDraft.tv:'';
   p.updatedAt=new Date().toISOString();
 
   if(!isNew&&deviationChanges.length){
@@ -423,6 +500,9 @@ async function savePlan(){
   if($('deviationReason'))$('deviationReason').value='';
   if($('deviationNote'))$('deviationNote').value='';
   clearFormDraft();
+  clearFileInputs();
+  if($('hkcmPreview'))$('hkcmPreview').innerHTML=imgHtml('');
+  if($('tvPreview'))$('tvPreview').innerHTML=imgHtml('');
   renderAll();
   show('plan');
 
