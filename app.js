@@ -215,8 +215,10 @@ function normalizeState(data={}){let s={...structuredClone(defaultState),...data
 function currentTrade(){return (state.activeTrades||[]).find(t=>t.id===selectedTradeId)||null}
 function isCreateScreenActive(){return $('create')?.classList.contains('active')}
 function collectFormDraft(){
+  const active=currentTrade();
+  const base=formDraft||active||state.plan||{};
   return{
-    id:formDraft?.id||currentTrade()?.id||null,
+    id:base.id||null,
     market:$('fMarket').value,
     symbol:$('fSymbol').value,
     direction:$('fDirection').value,
@@ -229,10 +231,8 @@ function collectFormDraft(){
     zone:$('fZone').value,
     why:$('fWhy').value,
     rule:$('fRule').value,
-    hkcm:formDraft?.hkcm??editing.hkcm,
-    tv:formDraft?.tv??editing.tv,
-    hkcm:formDraft?.hkcm??currentTrade()?.hkcm??state.plan?.hkcm??'',
-    tv:formDraft?.tv??currentTrade()?.tv??state.plan?.tv??''
+    hkcm:base.hkcm||'',
+    tv:base.tv||''
   }
 }
 function markFormDirty(){
@@ -333,23 +333,47 @@ function renderBrain(p,current,k,mentor){
   $('decision').classList.toggle('hidden',!['entry_approaching','stop_approaching','target_approaching'].includes(k.key));
 }
 function imgHtml(src){return src?`<img src="${src}" class="zoomable">`:`<div class="emptyShot">Noch kein Screenshot<br>über Eingabe hinzufügen</div>`}
-async function compressImage(file){return new Promise(res=>{const img=new Image();const r=new FileReader();r.onload=()=>{img.onload=()=>{const max=1100;let w=img.width,h=img.height;if(w>max||h>max){const s=Math.min(max/w,max/h);w=Math.round(w*s);h=Math.round(h*s)}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',.72))};img.src=r.result};r.readAsDataURL(file)})}
-async function handleImage(e,type){
-  const file=e.target.files[0];
-  if(!file)return;
-  const image=await compressImage(file);
-  if(isCreateScreenActive()){
-    if(!formDraft)formDraft=collectFormDraft();
-    formDraft[type]=image;
-    formDirty=true;
-    $(type+'Preview').innerHTML=imgHtml(image);
-    return;
-  }
-  const p=currentTrade()||state.plan||blankTrade();
-  p[type]=image;
-  if(p.id)upsertTrade(p);else state.plan=p;
-  renderAll();
-  scheduleSave();
+async function compressImage(file){
+  return new Promise((resolve,reject)=>{
+    if(!file.type.startsWith('image/')){
+      reject(new Error('Datei ist kein Bild'));
+      return;
+    }
+    const img=new Image();
+    const reader=new FileReader();
+
+    reader.onerror=()=>reject(new Error('Bilddatei konnte nicht gelesen werden'));
+    img.onerror=()=>reject(new Error('Bild konnte nicht geladen werden'));
+
+    reader.onload=()=>{
+      img.onload=()=>{
+        try{
+          const max=1100;
+          let w=img.naturalWidth||img.width;
+          let h=img.naturalHeight||img.height;
+          if(!w||!h)throw new Error('Ungültige Bildgröße');
+
+          if(w>max||h>max){
+            const scale=Math.min(max/w,max/h);
+            w=Math.round(w*scale);
+            h=Math.round(h*scale);
+          }
+
+          const canvas=document.createElement('canvas');
+          canvas.width=w;
+          canvas.height=h;
+          const ctx=canvas.getContext('2d');
+          if(!ctx)throw new Error('Canvas nicht verfügbar');
+          ctx.drawImage(img,0,0,w,h);
+          resolve(canvas.toDataURL('image/jpeg',.72));
+        }catch(error){
+          reject(error);
+        }
+      };
+      img.src=reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 async function savePlan(){
   const editingTrade=formMode==='edit'?(currentTrade()||state.activeTrades.find(t=>t.id===formDraft?.id)):null;

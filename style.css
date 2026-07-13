@@ -77,3 +77,6 @@ button:disabled{opacity:.55;cursor:not-allowed}
 }
 
 /* Sprint 5.8.4 – geschützter Eingabeentwurf */
+
+/* Sprint 5.8.5 – Screenshot-Fix */
+.uploadBox input[type="file"]{margin-bottom:10px}
