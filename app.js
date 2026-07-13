@@ -7,7 +7,7 @@ const CHALLENGE_BOXES=50;
 const CHALLENGE_TARGET=CHALLENGE_BOX_VALUE*CHALLENGE_BOXES;
 const MARKET_REFRESH_MS=30000;
 const MARKET_TIMEOUT_MS=9000;
-const tradeTemplate={market:'Dow Jones Future',symbol:'YM=F',direction:'Long',positionStatus:'active',contracts:1,pointValue:1,entry:52900,target:54045,stop:52380,current:52988,previousPrice:null,lastPrice:null,liveUpdatedAt:null,dataSource:null,entryTriggerSide:null,entryTriggeredAt:null,brainState:'waiting',originalPlan:null,zone:53500,why:'Laufende blaue Welle (v)\nEinstieg auf relevantem Fib-Niveau der Subwelle (ii)',rule:'Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.',hkcm:'',tv:'',createdAt:null,updatedAt:null};
+const tradeTemplate={market:'Dow Jones Future',symbol:'YM=F',direction:'Long',positionStatus:'active',contracts:1,pointValue:1,entry:52900,target:54045,stop:52380,current:52988,previousPrice:null,lastPrice:null,liveUpdatedAt:null,dataSource:null,entryTriggerSide:null,entryTriggeredAt:null,brainState:'waiting',mentorState:null,originalPlan:null,zone:53500,why:'Laufende blaue Welle (v)\nEinstieg auf relevantem Fib-Niveau der Subwelle (ii)',rule:'Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.',hkcm:'',tv:'',createdAt:null,updatedAt:null};
 const defaultState={
   plan:{...tradeTemplate},
   activeTrades:[],
@@ -42,9 +42,90 @@ function yahooUrls(symbol){const endpoint=`https://query1.finance.yahoo.com/v8/f
 function parseYahoo(data){const result=data?.chart?.result?.[0];if(!result)throw new Error(data?.chart?.error?.description||'Keine Yahoo-Daten');const meta=result.meta||{};let price=Number(meta.regularMarketPrice);if(!Number.isFinite(price)){const closes=result.indicators?.quote?.[0]?.close||[];price=Number([...closes].reverse().find(Number.isFinite))}if(!Number.isFinite(price))throw new Error('Kein gültiger Kurs');const prev=Number(meta.chartPreviousClose??meta.previousClose??price);return{price,prev,change:prev?((price-prev)/prev*100):0}}
 function entryReached(p,price,previous){const entry=num(p.entry);if(!Number.isFinite(entry))return false;if(!p.entryTriggerSide){p.entryTriggerSide=price>entry?'down':'up'}if(p.entryTriggerSide==='down')return price<=entry||(Number.isFinite(previous)&&previous>entry&&price<=entry);return price>=entry||(Number.isFinite(previous)&&previous<entry&&price>=entry)}
 function archiveAutomaticTrade(p,mode){const exit=mode==='target'?num(p.target):num(p.stop);const dir=p.direction==='Long'?1:-1;const points=(exit-num(p.entry))*dir;const contracts=num(p.contracts)||1;const pointValue=num(p.pointValue)||1;const pnl=Math.round(points*contracts*pointValue);state.trades.unshift({date:new Date().toLocaleDateString('de-DE'),createdAt:new Date().toISOString(),market:p.market,direction:p.direction,result:Math.round(points),pnl,contracts,pointValue,entry:p.entry,target:p.target,stop:p.stop,exit,closeType:mode==='target'?'Take-Profit':'Stop-Loss',planDeviation:false,note:'Automatisch durch Live-Kurs erkannt',symbol:p.symbol,sourceTradeId:p.id,brainState:mode==='target'?'target_hit':'stop_hit',originalPlan:p.originalPlan||planSnapshot(p)});removeActiveTrade(p.id)}
-function applyLivePrice(p,quote,source){const previous=Number.isFinite(num(p.current))?num(p.current):null;p.previousPrice=previous;p.lastPrice=quote.price;p.current=quote.price;p.liveUpdatedAt=new Date().toISOString();p.dataSource=source;p.liveChange=quote.change;lastLiveById[p.id]={price:quote.price,change:quote.change,source,at:p.liveUpdatedAt};if((p.positionStatus||'active')!=='active'&&entryReached(p,quote.price,previous)){p.positionStatus='active';p.entryTriggeredAt=new Date().toISOString()}const close=brokerCloseStatus(p,quote.price);if(close.mode==='target'||close.mode==='stop'){archiveAutomaticTrade(p,close.mode);return'closed'}p.brainState=tradeState(p,quote.price).key;p.updatedAt=new Date().toISOString();
-  if(isNew||!p.originalPlan)p.originalPlan=planSnapshot(p);upsertTrade(p);return'updated'}
+function applyLivePrice(p,quote,source){const previous=Number.isFinite(num(p.current))?num(p.current):null;p.previousPrice=previous;p.lastPrice=quote.price;p.current=quote.price;p.liveUpdatedAt=new Date().toISOString();p.dataSource=source;p.liveChange=quote.change;lastLiveById[p.id]={price:quote.price,change:quote.change,source,at:p.liveUpdatedAt};if((p.positionStatus||'active')!=='active'&&entryReached(p,quote.price,previous)){p.positionStatus='active';p.entryTriggeredAt=new Date().toISOString()}const close=brokerCloseStatus(p,quote.price);if(close.mode==='target'||close.mode==='stop'){archiveAutomaticTrade(p,close.mode);return'closed'}const nextState=tradeState(p,quote.price);p.brainState=nextState.key;mentorFor(p,nextState);p.updatedAt=new Date().toISOString();
+  if(isNew||!p.originalPlan)p.originalPlan=planSnapshot(p);
+  const initialState=tradeState(p,num(p.current)||num(p.entry));
+  p.brainState=initialState.key;
+  mentorFor(p,initialState);upsertTrade(p);return'updated'}
 function tradeState(p,current){const dir=p.direction==='Long'?1:-1;const entry=num(p.entry),stop=num(p.stop),target=num(p.target);const risk=Math.max(Math.abs(entry-stop),0.000001);const reward=Math.max(Math.abs(target-entry),0.000001);const active=(p.positionStatus||'active')==='active';if(!active){const d=Math.abs(current-entry);return d<=risk*.10?{key:'entry_approaching',phase:'Einstieg naht',priority:2,headline:'Einstieg nähert sich',text:`Noch ${fmt(d)} Punkte bis zum Einstieg. Warte auf die Ausführung.`}:{key:'waiting',phase:'Warten auf Einstieg',priority:1,headline:'Keine Handlung erforderlich',text:`Noch ${fmt(d)} Punkte bis zum geplanten Einstieg.`}}const close=brokerCloseStatus(p,current);if(close.mode==='stop')return{key:'stop_hit',phase:'Stop-Loss erreicht',priority:5,headline:'Stop-Loss erreicht',text:'Der Trade wird automatisch zum Stopkurs ins Journal übernommen.'};if(close.mode==='target')return{key:'target_hit',phase:'Take-Profit erreicht',priority:5,headline:'Take-Profit erreicht',text:'Der Trade wird automatisch zum Zielkurs ins Journal übernommen.'};const pnl=(current-entry)*dir;const stopDistance=Math.abs(current-stop);const targetDistance=Math.abs(target-current);if(stopDistance<=risk*.18)return{key:'stop_approaching',phase:'Stopnähe',priority:4,headline:'Stop-Loss nähert sich',text:'Nicht verschieben. Die vorher definierte Invalidierung zählt.'};if(targetDistance<=reward*.12)return{key:'target_approaching',phase:'Take-Profit Nähe',priority:3,headline:'Take-Profit nähert sich',text:'Lass die Order arbeiten. Keine vorzeitige Entscheidung.'};if(Math.abs(pnl)<=risk*.05)return{key:'breakeven',phase:'Nahe Einstieg',priority:2,headline:'Ruhe bewahren',text:'Der Markt befindet sich nahe am Einstieg. Keine neue Entscheidung nötig.'};if(pnl<0)return{key:'risk',phase:'Im Risiko',priority:2,headline:'Plan bleibt gültig',text:`Der Stop-Loss ist ${fmt(stopDistance)} Punkte entfernt. Nicht aus Angst handeln.`};return{key:'profit',phase:'Im Gewinn',priority:1,headline:'Keine Handlung erforderlich',text:`Noch ${fmt(targetDistance)} Punkte bis zum Take-Profit.`}}
+
+const MENTOR_LIBRARY={
+  waiting:[
+    {key:'wait_plan',headline:'Keine Handlung erforderlich',text:'Der Markt hat deinen Einstieg noch nicht erreicht.',action:'Warte auf deinen geplanten Preis.',tone:'calm'},
+    {key:'wait_no_chase',headline:'Geduld ist Teil des Plans',text:'Ein nicht ausgelöster Trade ist kein verpasster Trade.',action:'Nicht hinterherlaufen.',tone:'calm'},
+    {key:'wait_order',headline:'Order arbeiten lassen',text:'Du hast Einstieg, Stop-Loss und Take-Profit vorab definiert.',action:'Keine spontane Anpassung.',tone:'calm'}
+  ],
+  entry_approaching:[
+    {key:'entry_close',headline:'Einstieg nähert sich',text:'Der Markt kommt in deinen geplanten Bereich.',action:'Warte auf die tatsächliche Ausführung.',tone:'watch'},
+    {key:'entry_patience',headline:'Jetzt zählt Geduld',text:'Die Nähe zum Einstieg ist noch kein Einstieg.',action:'Nicht vorwegnehmen.',tone:'watch'}
+  ],
+  breakeven:[
+    {key:'be_quiet',headline:'Ruhe bewahren',text:'Der Markt bewegt sich nahe am Einstieg.',action:'Keine neue Entscheidung nötig.',tone:'calm'},
+    {key:'be_plan',headline:'Plan bleibt unverändert',text:'Kleine Bewegungen um den Einstieg gehören zum Trade.',action:'Stop und Ziel nicht verändern.',tone:'calm'}
+  ],
+  risk:[
+    {key:'risk_defined',headline:'Das Risiko ist definiert',text:'Der Stop-Loss begrenzt den Verlust bereits.',action:'Nicht aus Angst handeln.',tone:'calm'},
+    {key:'risk_hold',headline:'Plan bleibt gültig',text:'Ein Trade darf gegen dich laufen, ohne falsch zu sein.',action:'Nur die Invalidierung zählt.',tone:'calm'},
+    {key:'risk_no_move',headline:'Keine Reaktion auf Unbehagen',text:'Unbehagen ist kein objektives Ausstiegssignal.',action:'Stop-Loss nicht verschieben.',tone:'watch'}
+  ],
+  profit:[
+    {key:'profit_hold',headline:'Keine Handlung erforderlich',text:'Der Trade bewegt sich in Richtung Take-Profit.',action:'Lass den Plan arbeiten.',tone:'calm'},
+    {key:'profit_no_fear',headline:'Gewinne brauchen Raum',text:'Ein offener Gewinn ist kein Grund für einen frühen Ausstieg.',action:'Nicht aus Verlustangst schließen.',tone:'calm'},
+    {key:'profit_target',headline:'Ziel bleibt das Ziel',text:'Der ursprüngliche Take-Profit ist weiterhin gültig.',action:'Keine Euphorie-Entscheidung.',tone:'calm'}
+  ],
+  stop_approaching:[
+    {key:'stop_near',headline:'Stop-Loss nähert sich',text:'Die kritische Zone ist erreicht.',action:'Nicht verschieben. Invalidierung akzeptieren.',tone:'critical'},
+    {key:'stop_control',headline:'Jetzt nur den Plan prüfen',text:'Angst darf den vorab definierten Stop nicht verändern.',action:'Keine Rettungsaktion starten.',tone:'critical'}
+  ],
+  target_approaching:[
+    {key:'target_near',headline:'Take-Profit nähert sich',text:'Kurz vor dem Ziel entstehen häufig unnötige Eingriffe.',action:'Lass die Limit-Order arbeiten.',tone:'watch'},
+    {key:'target_discipline',headline:'Disziplin bis zum Ende',text:'Der Trade ist noch nicht abgeschlossen.',action:'Nicht vorzeitig schließen.',tone:'watch'}
+  ],
+  stop_hit:[
+    {key:'stop_done',headline:'Stop-Loss erreicht',text:'Der Verlust wurde gemäß Plan begrenzt.',action:'Akzeptieren und ins Journal übernehmen.',tone:'critical'}
+  ],
+  target_hit:[
+    {key:'target_done',headline:'Take-Profit erreicht',text:'Der Gewinn wurde gemäß Plan realisiert.',action:'Abschluss dokumentieren. Keine neue Entscheidung.',tone:'calm'}
+  ]
+};
+
+function mentorBucket(p,key){
+  const seed=String(p.id||p.symbol||'atlas')+':'+key;
+  let hash=0;
+  for(let i=0;i<seed.length;i++) hash=((hash<<5)-hash)+seed.charCodeAt(i)|0;
+  // Switch at most every 10 minutes, so the mentor does not feel restless.
+  const timeBucket=Math.floor(Date.now()/600000);
+  return Math.abs(hash+timeBucket);
+}
+
+function mentorFor(p,tradeStateResult){
+  const key=tradeStateResult.key;
+  const list=MENTOR_LIBRARY[key]||MENTOR_LIBRARY.waiting;
+  const existing=p.mentorState||{};
+  const phaseChanged=existing.phaseKey!==key;
+  let messageKey=existing.messageKey;
+
+  if(phaseChanged || !list.some(x=>x.key===messageKey)){
+    messageKey=list[mentorBucket(p,key)%list.length].key;
+  }
+
+  const message=list.find(x=>x.key===messageKey)||list[0];
+  const now=new Date().toISOString();
+
+  p.mentorState={
+    phaseKey:key,
+    messageKey:message.key,
+    phaseEnteredAt:phaseChanged?now:(existing.phaseEnteredAt||now),
+    lastUpdatedAt:now
+  };
+
+  return {
+    ...message,
+    phase:tradeStateResult.phase,
+    priority:tradeStateResult.priority,
+    technicalText:tradeStateResult.text
+  };
+}
 
 function normalizeState(data={}){let s={...structuredClone(defaultState),...data,settings:{...defaultState.settings,...(data.settings||{})}};if(!Array.isArray(s.activeTrades))s.activeTrades=[];if(!Array.isArray(s.trades))s.trades=[];if(!Array.isArray(s.challenge))s.challenge=[];if(s.activeTrades.length===0 && data.plan){const migrated={...tradeTemplate,...data.plan,id:uid(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};migrated.originalPlan=migrated.originalPlan||planSnapshot(migrated);s.activeTrades=[migrated];s.plan=migrated}else if(s.activeTrades.length>0){s.activeTrades=s.activeTrades.map(t=>{const n={...tradeTemplate,...t,id:t.id||uid()};n.originalPlan=n.originalPlan||planSnapshot(n);return n});s.plan=s.activeTrades[0]}return s}
 function currentTrade(){return (state.activeTrades||[]).find(t=>t.id===selectedTradeId)||null}
@@ -70,10 +151,40 @@ function renderDesk(){const arr=state.activeTrades||[];$('activeTradeList').inne
 function tradeDeskCard(t){const current=num(t.current)||num(t.entry);const s=tradeState(t,current);const close=brokerCloseStatus(t,current);const lampClass=close.mode==='stop'||s.key==='stop_approaching'?'red':(close.mode==='target'||s.key==='target_approaching'||s.key==='entry_approaching'?'yellow':'');const side=t.direction==='Long'?'Kaufen':'Verkaufen';const focus=deskFocus(t,current,s);return `<button class="activeTradeCard" data-state="${s.key}" data-selecttrade="${t.id}"><div class="miniLamp ${lampClass}"></div><div><b>${t.market}</b><span>${side} · ${fmt(t.contracts)} Kontrakt(e)</span></div><div class="deskMeta"><strong>${s.phase}</strong><span>${focus}</span></div></button>`}
 function deskFocus(p,current,s){if((p.positionStatus||'active')!=='active')return `${fmt(dist(current,p.entry))}P bis Einstieg`;if(s.key==='stop_hit')return 'Stop erreicht';if(s.key==='target_hit')return 'TP erreicht';if(s.key==='stop_approaching')return `${fmt(dist(current,p.stop))}P bis SL`;return `${fmt(dist(p.target,current))}P bis TP`}
 function loadForm(){const p=currentTrade()||state.plan||blankTrade();$('formTitle').textContent=currentTrade()?'Trade bearbeiten':'Trade anlegen';$('btnSavePlan').textContent=currentTrade()?'Trade aktualisieren':'Neuen Trade speichern';$('fMarketSelect').innerHTML=markets.map(m=>`<option value="${m[0]}">${m[1]}</option>`).join('');$('fMarketSelect').value=markets.some(m=>m[0]===p.symbol)?p.symbol:'CUSTOM';$('fMarket').value=p.market;$('fSymbol').value=p.symbol;$('fDirection').value=p.direction;$('fPositionStatus').value=p.positionStatus||'active';$('fContracts').value=p.contracts;$('fPointValue').value=p.pointValue;$('fEntry').value=p.entry;$('fTarget').value=p.target;$('fStop').value=p.stop;$('fZone').value=p.zone;$('fWhy').value=p.why;$('fRule').value=p.rule;$('hkcmPreview').innerHTML=imgHtml(p.hkcm);$('tvPreview').innerHTML=imgHtml(p.tv);if($('accountStart'))$('accountStart').value=state.settings.accountStart||''}
-function renderPlan(){renderDesk();const p=currentTrade();if(!p){$('tradeDetail').classList.add('hidden');return}$('tradeDetail').classList.remove('hidden');const current=num(p.current)||num(p.entry);$('marketTitle').textContent=`${p.market} · ${p.direction==='Long'?'Kaufen / Long':'Verkaufen / Short'}`;$('directionLine').textContent=`${p.contracts} Kontrakt(e) · ${p.symbol}`;$('sStop').textContent=fmt(p.stop);$('sEntry').textContent=fmt(p.entry);$('sTarget').textContent=fmt(p.target);$('whyList').innerHTML=String(p.why||'').split('\n').filter(Boolean).map(x=>`<div class="pill">✓ ${x}</div>`).join('')||'<p>Keine Analyse hinterlegt.</p>';$('bar').style.width=progressPct(p,current)+'%';$('hkcmView').innerHTML=imgHtml(p.hkcm);$('tvView').innerHTML=imgHtml(p.tv);const k=tradeState(p,current);renderBrain(p,current,k);renderBrokerCard(p,current,k);renderClosePanel(p,current);const last=lastLiveById[p.id]||(p.liveUpdatedAt?{price:current,change:Number(p.liveChange),source:p.dataSource,at:p.liveUpdatedAt}:null);if(last){$('livePrice').textContent=fmt(last.price);$('liveChange').textContent=Number.isFinite(Number(last.change))?((Number(last.change)>=0?'+':'')+fmt(last.change)+'%'):'-';if($('liveMsg'))$('liveMsg').textContent=`Live-Kurs aktualisiert${last.source?' · '+last.source:''}${last.at?' · '+new Date(last.at).toLocaleTimeString('de-DE'):''}`}else{$('livePrice').textContent=fmt(current);$('liveChange').textContent='-';if($('liveMsg'))$('liveMsg').textContent='Live-Daten werden automatisch geladen.'}}
+function renderPlan(){renderDesk();const p=currentTrade();if(!p){$('tradeDetail').classList.add('hidden');return}$('tradeDetail').classList.remove('hidden');const current=num(p.current)||num(p.entry);$('marketTitle').textContent=`${p.market} · ${p.direction==='Long'?'Kaufen / Long':'Verkaufen / Short'}`;$('directionLine').textContent=`${p.contracts} Kontrakt(e) · ${p.symbol}`;$('sStop').textContent=fmt(p.stop);$('sEntry').textContent=fmt(p.entry);$('sTarget').textContent=fmt(p.target);$('whyList').innerHTML=String(p.why||'').split('\n').filter(Boolean).map(x=>`<div class="pill">✓ ${x}</div>`).join('')||'<p>Keine Analyse hinterlegt.</p>';$('bar').style.width=progressPct(p,current)+'%';$('hkcmView').innerHTML=imgHtml(p.hkcm);$('tvView').innerHTML=imgHtml(p.tv);const k=tradeState(p,current);const mentor=mentorFor(p,k);renderBrain(p,current,k,mentor);renderBrokerCard(p,current,k);renderClosePanel(p,current);const last=lastLiveById[p.id]||(p.liveUpdatedAt?{price:current,change:Number(p.liveChange),source:p.dataSource,at:p.liveUpdatedAt}:null);if(last){$('livePrice').textContent=fmt(last.price);$('liveChange').textContent=Number.isFinite(Number(last.change))?((Number(last.change)>=0?'+':'')+fmt(last.change)+'%'):'-';if($('liveMsg'))$('liveMsg').textContent=`Live-Kurs aktualisiert${last.source?' · '+last.source:''}${last.at?' · '+new Date(last.at).toLocaleTimeString('de-DE'):''}`}else{$('livePrice').textContent=fmt(current);$('liveChange').textContent='-';if($('liveMsg'))$('liveMsg').textContent='Live-Daten werden automatisch geladen.'}}
 function renderBrokerCard(p,current,k){const side=p.direction==='Long'?'Kaufen':'Verkaufen';$('brokerSide').textContent=side;$('brokerSide').classList.toggle('sell',p.direction==='Short');$('brokerContracts').textContent=fmt(p.contracts);$('brokerEntry').textContent=fmt(p.entry);$('brokerCurrent').textContent=fmt(current);$('brokerStop').textContent=fmt(p.stop);$('brokerTarget').textContent=fmt(p.target);$('brokerPhase').textContent=k.phase;$('brokerRelevantDistance').textContent=k.headline;$('brokerRelevantText').textContent=k.text}
 function progressPct(p,c){const stop=num(p.stop),target=num(p.target);if(target===stop)return 0;return Math.min(100,Math.max(0,(c-stop)/(target-stop)*100))}
-function renderBrain(p,current,k){const lamp=$('riskLamp');lamp.className='lamp';let main='✓ PLAN LÄUFT',phase=k.phase,text=k.text,quote=p.rule||'Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.';if(k.key==='entry_approaching'||k.key==='target_approaching'){lamp.classList.add('yellow','brainPulse')}if(k.key==='stop_approaching'||k.key==='stop_hit'){lamp.classList.add('red','brainPulse')}if(k.key==='target_hit')lamp.classList.add('yellow');if(k.key==='stop_approaching')main='⚠ STOP-LOSS NÄHERT SICH';if(k.key==='stop_hit')main='STOP-LOSS ERREICHT';if(k.key==='target_hit')main='TAKE-PROFIT ERREICHT';$('mainStatus').textContent=main;$('mainPhase').textContent=k.headline;$('brainText').textContent=text;$('brainQuote').textContent='„'+quote+'“';$('decision').classList.toggle('hidden',!['entry_approaching','stop_approaching','target_approaching'].includes(k.key))}
+function renderBrain(p,current,k,mentor){
+  const lamp=$('riskLamp');
+  lamp.className='lamp';
+
+  let main='✓ PLAN LÄUFT';
+  if(k.key==='stop_approaching') main='⚠ STOP-LOSS NÄHERT SICH';
+  if(k.key==='stop_hit') main='STOP-LOSS ERREICHT';
+  if(k.key==='target_hit') main='TAKE-PROFIT ERREICHT';
+
+  if(['entry_approaching','target_approaching'].includes(k.key)){
+    lamp.classList.add('yellow','brainPulse');
+  }
+  if(['stop_approaching','stop_hit'].includes(k.key)){
+    lamp.classList.add('red','brainPulse');
+  }
+  if(k.key==='target_hit') lamp.classList.add('yellow');
+
+  $('mainStatus').textContent=main;
+  $('mainPhase').textContent=mentor.headline;
+  $('brainText').textContent=mentor.text;
+
+  const action=$('mentorAction');
+  if(action){
+    action.textContent=mentor.action;
+    action.className='mentorAction '+mentor.tone;
+  }
+
+  const quote=p.rule||'Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.';
+  $('brainQuote').textContent='„'+quote+'“';
+  $('decision').classList.toggle('hidden',!['entry_approaching','stop_approaching','target_approaching'].includes(k.key));
+}
 function imgHtml(src){return src?`<img src="${src}" class="zoomable">`:`<div class="emptyShot">Noch kein Screenshot<br>über Eingabe hinzufügen</div>`}
 async function compressImage(file){return new Promise(res=>{const img=new Image();const r=new FileReader();r.onload=()=>{img.onload=()=>{const max=1100;let w=img.width,h=img.height;if(w>max||h>max){const s=Math.min(max/w,max/h);w=Math.round(w*s);h=Math.round(h*s)}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',.72))};img.src=r.result};r.readAsDataURL(file)})}
 async function handleImage(e,type){const file=e.target.files[0];if(!file)return;const p=currentTrade()||state.plan||blankTrade();p[type]=await compressImage(file);if(p.id)upsertTrade(p);else state.plan=p;renderAll();scheduleSave()}

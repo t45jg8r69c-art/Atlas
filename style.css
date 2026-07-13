@@ -17,3 +17,34 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .brainPulse{animation:brainPulse 2.8s ease-in-out infinite}
 @keyframes brainPulse{0%,100%{box-shadow:0 0 22px rgba(230,169,93,.20)}50%{box-shadow:0 0 34px rgba(230,169,93,.42)}}
 .activeTradeCard[data-state="stop_hit"],.activeTradeCard[data-state="target_hit"]{border-color:var(--gold)}
+
+/* Sprint 5.8.2 – Mentor Engine */
+.mentorAction{
+  margin-top:14px;
+  padding:13px 15px;
+  border-radius:14px;
+  border:1px solid rgba(217,189,106,.45);
+  background:rgba(217,189,106,.08);
+  color:#fff1bd;
+  font-weight:800;
+  font-size:17px;
+  line-height:1.35;
+}
+.mentorAction.calm{
+  border-color:rgba(114,215,155,.38);
+  background:rgba(114,215,155,.07);
+  color:#d9ffe8;
+}
+.mentorAction.watch{
+  border-color:rgba(230,169,93,.55);
+  background:rgba(230,169,93,.09);
+  color:#ffe0b3;
+}
+.mentorAction.critical{
+  border-color:rgba(224,113,113,.62);
+  background:rgba(224,113,113,.10);
+  color:#ffd1d1;
+}
+@media(max-width:820px){
+  .mentorAction{font-size:16px;padding:12px 13px}
+}
