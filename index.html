@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Atlas V5.8.2 Brain & Live Detail Fix</title>
+  <title>Atlas V5.8.3 Brain & Live Detail Fix</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -80,6 +80,13 @@
               <div class="progress"><div id="bar"></div></div>
               <div class="scale"><span>Stop <b id="sStop">-</b></span><span>Einstieg <b id="sEntry">-</b></span><span>Jetzt</span><span>Ziel <b id="sTarget">-</b></span></div>
               <div id="brainQuote" class="quote">„Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.“</div>
+            </div>
+
+            
+            <div id="planDeviationCard" class="card deviationInfo hidden">
+              <div class="label">Planabweichungen</div>
+              <h2 id="deviationCount">0 dokumentiert</h2>
+              <p id="deviationLatest">Keine Abweichungen vom ursprünglichen Plan.</p>
             </div>
 
             <div class="card riskCard">
@@ -190,7 +197,25 @@
           <div class="label">Screenshots</div>
           <div class="uploadBox"><b>HKCM Analyse</b><input id="hkcmFile" type="file" accept="image/*" /><div id="hkcmPreview"></div></div>
           <div class="uploadBox"><b>TradingView</b><input id="tvFile" type="file" accept="image/*" /><div id="tvPreview"></div></div>
-          <button id="btnSavePlan" class="primary">Trade in Cloud speichern</button>
+          
+          <div id="deviationPanel" class="deviationPanel hidden">
+            <div class="label">Planabweichung erkannt</div>
+            <h2>Änderung begründen</h2>
+            <p id="deviationSummary">Atlas hat eine Abweichung vom ursprünglichen Plan erkannt.</p>
+            <label>Grund</label>
+            <select id="deviationReason">
+              <option value="">Bitte auswählen</option>
+              <option value="Marktstruktur geändert">Marktstruktur geändert</option>
+              <option value="Risiko reduziert">Risiko reduziert</option>
+              <option value="Analysefehler erkannt">Analysefehler erkannt</option>
+              <option value="Nachricht / externes Ereignis">Nachricht / externes Ereignis</option>
+              <option value="Angst">Angst</option>
+              <option value="Gewinn sichern">Gewinn sichern</option>
+              <option value="Sonstiges">Sonstiges</option>
+            </select>
+            <textarea id="deviationNote" placeholder="Kurze Begründung zur Änderung"></textarea>
+          </div>
+<button id="btnSavePlan" class="primary">Trade in Cloud speichern</button>
           <p id="saveMsg" class="msg"></p>
         </div>
       </section>
