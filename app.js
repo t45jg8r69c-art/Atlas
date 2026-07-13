@@ -16,7 +16,7 @@ const defaultState={
   settings:{autoYahoo:false,accountStart:0},
   updatedAt:null
 };
-let state=structuredClone(defaultState), user=null, unsub=null, saving=false, saveTimer=null, selectedTradeId=null, lastLiveById={}, marketTimer=null, marketBusy=false;
+let state=structuredClone(defaultState), user=null, unsub=null, saving=false, saveTimer=null, selectedTradeId=null, lastLiveById={}, marketTimer=null, marketBusy=false, formDraft=null, formDirty=false, formMode='none';
 const $=id=>document.getElementById(id);
 function fmt(n){const x=Number(n);return Number.isFinite(x)?x.toLocaleString('de-DE',{maximumFractionDigits:2}):'-'}
 function num(v){return Number(String(v??'').replace(',','.'))}
@@ -73,7 +73,9 @@ function pendingDeviationChanges(){
     target:num($('fTarget').value),
     zone:num($('fZone').value),
     why:$('fWhy').value,
-    rule:$('fRule').value
+    rule:$('fRule').value,
+    hkcm:formDraft?.hkcm??editing.hkcm,
+    tv:formDraft?.tv??editing.tv
   };
   return detectPlanChanges(editing.originalPlan,draft);
 }
@@ -211,10 +213,57 @@ function mentorFor(p,tradeStateResult){
 
 function normalizeState(data={}){let s={...structuredClone(defaultState),...data,settings:{...defaultState.settings,...(data.settings||{})}};if(!Array.isArray(s.activeTrades))s.activeTrades=[];if(!Array.isArray(s.trades))s.trades=[];if(!Array.isArray(s.challenge))s.challenge=[];if(s.activeTrades.length===0 && data.plan){const migrated={...tradeTemplate,...data.plan,id:uid(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};migrated.originalPlan=migrated.originalPlan||planSnapshot(migrated);s.activeTrades=[migrated];s.plan=migrated}else if(s.activeTrades.length>0){s.activeTrades=s.activeTrades.map(t=>{const n={...tradeTemplate,...t,id:t.id||uid()};n.originalPlan=n.originalPlan||planSnapshot(n);if(!Array.isArray(n.deviations))n.deviations=[];return n});s.plan=s.activeTrades[0]}return s}
 function currentTrade(){return (state.activeTrades||[]).find(t=>t.id===selectedTradeId)||null}
+function isCreateScreenActive(){return $('create')?.classList.contains('active')}
+function collectFormDraft(){
+  return{
+    id:formDraft?.id||currentTrade()?.id||null,
+    market:$('fMarket').value,
+    symbol:$('fSymbol').value,
+    direction:$('fDirection').value,
+    positionStatus:$('fPositionStatus').value,
+    contracts:$('fContracts').value,
+    pointValue:$('fPointValue').value,
+    entry:$('fEntry').value,
+    stop:$('fStop').value,
+    target:$('fTarget').value,
+    zone:$('fZone').value,
+    why:$('fWhy').value,
+    rule:$('fRule').value,
+    hkcm:formDraft?.hkcm??editing.hkcm,
+    tv:formDraft?.tv??editing.tv,
+    hkcm:formDraft?.hkcm??currentTrade()?.hkcm??state.plan?.hkcm??'',
+    tv:formDraft?.tv??currentTrade()?.tv??state.plan?.tv??''
+  }
+}
+function markFormDirty(){
+  if(!isCreateScreenActive())return;
+  formDirty=true;
+  formDraft=collectFormDraft();
+  if($('saveMsg'))$('saveMsg').textContent='Ungespeicherter Entwurf – Cloud-Updates überschreiben diese Eingaben nicht.';
+}
+function clearFormDraft(){
+  formDraft=null;
+  formDirty=false;
+  formMode='none';
+}
+function safeRenderAll(){
+  renderDesk();
+  if(!(isCreateScreenActive()&&formDirty))loadForm();
+  renderPlan();
+  renderTrades();
+  renderChallenge();
+}
+
 function upsertTrade(trade){const arr=state.activeTrades||[];const i=arr.findIndex(t=>t.id===trade.id);if(i>=0)arr[i]=trade;else arr.unshift(trade);state.activeTrades=arr;state.plan=trade;selectedTradeId=trade.id}
 function removeActiveTrade(id){state.activeTrades=(state.activeTrades||[]).filter(t=>t.id!==id);if(selectedTradeId===id)selectedTradeId=null;state.plan=state.activeTrades[0]||{...tradeTemplate};}
 function makeNav(){const html=tabs.map((t,i)=>`<button data-tab="${t[0]}" class="${i?'':'active'}">${t[1]}</button>`).join('');$('nav').innerHTML=html;$('bottom').innerHTML=html;document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.tab)))}
-function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));scrollTo(0,0)}
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  $(id).classList.add('active');
+  document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
+  if(id==='create'&&formDraft)loadForm(formDraft);
+  scrollTo(0,0);
+}
 function cloudMsg(t){$('cloudState').textContent=t;$('syncPill').textContent=t}
 function stateRef(){return atlasFirebase.db.collection('users').doc(user.uid).collection('atlas').doc('state')}
 function scheduleSave(){if(!user||saving)return;cloudMsg('Speichert...');clearTimeout(saveTimer);saveTimer=setTimeout(saveCloud,450)}
@@ -224,15 +273,31 @@ async function login(){try{await atlasFirebase.auth.signInWithEmailAndPassword($
 async function register(){try{await atlasFirebase.auth.createUserWithEmailAndPassword($('authEmail').value.trim(),$('authPassword').value);$('authMsg').textContent=''}catch(e){$('authMsg').textContent=authError(e)}}
 function authError(e){console.error(e);if(e.code==='auth/email-already-in-use')return 'Diese E-Mail ist bereits registriert. Bitte anmelden.';if(e.code==='auth/invalid-credential'||e.code==='auth/wrong-password')return 'Anmeldung fehlgeschlagen. E-Mail oder Passwort prüfen.';if(e.code==='auth/weak-password')return 'Passwort muss mindestens 6 Zeichen haben.';return 'Fehler: '+(e.message||e.code)}
 atlasFirebase.auth.onAuthStateChanged(u=>{user=u;if(u){$('authScreen').classList.add('hidden');$('app').classList.remove('hidden');cloudMsg('Cloud verbunden');startCloud(u.uid);startMarketEngine()}else{$('authScreen').classList.remove('hidden');$('app').classList.add('hidden');if(unsub)unsub();stopMarketEngine()}});
-function renderAll(){renderDesk();loadForm();renderPlan();renderTrades();renderChallenge()}
+function renderAll(){safeRenderAll()}
 function blankTrade(){return {...tradeTemplate,id:uid(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}}
-function startNewTrade(){selectedTradeId=null;state.plan=blankTrade();loadForm();$('saveMsg').textContent='Neuen Trade erfassen.';show('create')}
-function editSelectedTrade(){const p=currentTrade();if(!p)return;loadForm();show('create')}
+function startNewTrade(){
+  selectedTradeId=null;
+  formMode='new';
+  formDraft=blankTrade();
+  formDirty=false;
+  loadForm(formDraft);
+  $('saveMsg').textContent='Neuen Trade erfassen.';
+  show('create');
+}
+function editSelectedTrade(){
+  const p=currentTrade();
+  if(!p)return;
+  formMode='edit';
+  formDraft=structuredClone(p);
+  formDirty=false;
+  loadForm(formDraft);
+  show('create');
+}
 async function selectTrade(id){selectedTradeId=id;renderPlan();scrollTo(0,0);const p=currentTrade();if(!p||!p.symbol||p.symbol==='CUSTOM')return;if($('liveMsg'))$('liveMsg').textContent='Live-Kurs wird für diesen Trade geladen...';const ok=await fetchMarketDataForTrade(p);renderAll();if(ok){scheduleSave();setDataPill('Marktdaten live','ok')}else setDataPill('Marktdaten gestört','error')}
 function renderDesk(){const arr=state.activeTrades||[];$('activeTradeList').innerHTML=arr.map(t=>tradeDeskCard(t)).join('')||`<div class="emptyDesk"><h2>Noch kein aktiver Trade</h2><p>Lege deinen ersten Trade an. Atlas zeigt dir danach nur eine ruhige Übersicht und öffnet Details erst auf Klick.</p></div>`;document.querySelectorAll('[data-selecttrade]').forEach(b=>b.addEventListener('click',()=>selectTrade(b.dataset.selecttrade)));if($('tradeDetail'))$('tradeDetail').classList.toggle('hidden',!currentTrade())}
 function tradeDeskCard(t){const current=num(t.current)||num(t.entry);const s=tradeState(t,current);const close=brokerCloseStatus(t,current);const lampClass=close.mode==='stop'||s.key==='stop_approaching'?'red':(close.mode==='target'||s.key==='target_approaching'||s.key==='entry_approaching'?'yellow':'');const side=t.direction==='Long'?'Kaufen':'Verkaufen';const focus=deskFocus(t,current,s);return `<button class="activeTradeCard" data-state="${s.key}" data-selecttrade="${t.id}"><div class="miniLamp ${lampClass}"></div><div><b>${t.market}</b><span>${side} · ${fmt(t.contracts)} Kontrakt(e)</span></div><div class="deskMeta"><strong>${s.phase}</strong><span>${focus}</span></div></button>`}
 function deskFocus(p,current,s){if((p.positionStatus||'active')!=='active')return `${fmt(dist(current,p.entry))}P bis Einstieg`;if(s.key==='stop_hit')return 'Stop erreicht';if(s.key==='target_hit')return 'TP erreicht';if(s.key==='stop_approaching')return `${fmt(dist(current,p.stop))}P bis SL`;return `${fmt(dist(p.target,current))}P bis TP`}
-function loadForm(){const p=currentTrade()||state.plan||blankTrade();$('formTitle').textContent=currentTrade()?'Trade bearbeiten':'Trade anlegen';$('btnSavePlan').textContent=currentTrade()?'Trade aktualisieren':'Neuen Trade speichern';$('fMarketSelect').innerHTML=markets.map(m=>`<option value="${m[0]}">${m[1]}</option>`).join('');$('fMarketSelect').value=markets.some(m=>m[0]===p.symbol)?p.symbol:'CUSTOM';$('fMarket').value=p.market;$('fSymbol').value=p.symbol;$('fDirection').value=p.direction;$('fPositionStatus').value=p.positionStatus||'active';$('fContracts').value=p.contracts;$('fPointValue').value=p.pointValue;$('fEntry').value=p.entry;$('fTarget').value=p.target;$('fStop').value=p.stop;$('fZone').value=p.zone;$('fWhy').value=p.why;$('fRule').value=p.rule;$('hkcmPreview').innerHTML=imgHtml(p.hkcm);$('tvPreview').innerHTML=imgHtml(p.tv);if($('accountStart'))$('accountStart').value=state.settings.accountStart||'';setTimeout(renderDeviationPanel,0)}
+function loadForm(source=null){const p=source||((isCreateScreenActive()&&formDraft)?formDraft:(currentTrade()||state.plan||blankTrade()));$('formTitle').textContent=currentTrade()?'Trade bearbeiten':'Trade anlegen';$('btnSavePlan').textContent=currentTrade()?'Trade aktualisieren':'Neuen Trade speichern';$('fMarketSelect').innerHTML=markets.map(m=>`<option value="${m[0]}">${m[1]}</option>`).join('');$('fMarketSelect').value=markets.some(m=>m[0]===p.symbol)?p.symbol:'CUSTOM';$('fMarket').value=p.market;$('fSymbol').value=p.symbol;$('fDirection').value=p.direction;$('fPositionStatus').value=p.positionStatus||'active';$('fContracts').value=p.contracts;$('fPointValue').value=p.pointValue;$('fEntry').value=p.entry;$('fTarget').value=p.target;$('fStop').value=p.stop;$('fZone').value=p.zone;$('fWhy').value=p.why;$('fRule').value=p.rule;$('hkcmPreview').innerHTML=imgHtml(p.hkcm);$('tvPreview').innerHTML=imgHtml(p.tv);if($('accountStart'))$('accountStart').value=state.settings.accountStart||'';setTimeout(renderDeviationPanel,0)}
 function renderPlan(){renderDesk();const p=currentTrade();if(!p){$('tradeDetail').classList.add('hidden');return}$('tradeDetail').classList.remove('hidden');const current=num(p.current)||num(p.entry);$('marketTitle').textContent=`${p.market} · ${p.direction==='Long'?'Kaufen / Long':'Verkaufen / Short'}`;$('directionLine').textContent=`${p.contracts} Kontrakt(e) · ${p.symbol}`;$('sStop').textContent=fmt(p.stop);$('sEntry').textContent=fmt(p.entry);$('sTarget').textContent=fmt(p.target);$('whyList').innerHTML=String(p.why||'').split('\n').filter(Boolean).map(x=>`<div class="pill">✓ ${x}</div>`).join('')||'<p>Keine Analyse hinterlegt.</p>';$('bar').style.width=progressPct(p,current)+'%';$('hkcmView').innerHTML=imgHtml(p.hkcm);$('tvView').innerHTML=imgHtml(p.tv);const k=tradeState(p,current);const mentor=mentorFor(p,k);renderBrain(p,current,k,mentor);renderBrokerCard(p,current,k);renderClosePanel(p,current);renderDeviationInfo(p);const last=lastLiveById[p.id]||(p.liveUpdatedAt?{price:current,change:Number(p.liveChange),source:p.dataSource,at:p.liveUpdatedAt}:null);if(last){$('livePrice').textContent=fmt(last.price);$('liveChange').textContent=Number.isFinite(Number(last.change))?((Number(last.change)>=0?'+':'')+fmt(last.change)+'%'):'-';if($('liveMsg'))$('liveMsg').textContent=`Live-Kurs aktualisiert${last.source?' · '+last.source:''}${last.at?' · '+new Date(last.at).toLocaleTimeString('de-DE'):''}`}else{$('livePrice').textContent=fmt(current);$('liveChange').textContent='-';if($('liveMsg'))$('liveMsg').textContent='Live-Daten werden automatisch geladen.'}}
 function renderBrokerCard(p,current,k){const side=p.direction==='Long'?'Kaufen':'Verkaufen';$('brokerSide').textContent=side;$('brokerSide').classList.toggle('sell',p.direction==='Short');$('brokerContracts').textContent=fmt(p.contracts);$('brokerEntry').textContent=fmt(p.entry);$('brokerCurrent').textContent=fmt(current);$('brokerStop').textContent=fmt(p.stop);$('brokerTarget').textContent=fmt(p.target);$('brokerPhase').textContent=k.phase;$('brokerRelevantDistance').textContent=k.headline;$('brokerRelevantText').textContent=k.text}
 function progressPct(p,c){const stop=num(p.stop),target=num(p.target);if(target===stop)return 0;return Math.min(100,Math.max(0,(c-stop)/(target-stop)*100))}
@@ -269,10 +334,26 @@ function renderBrain(p,current,k,mentor){
 }
 function imgHtml(src){return src?`<img src="${src}" class="zoomable">`:`<div class="emptyShot">Noch kein Screenshot<br>über Eingabe hinzufügen</div>`}
 async function compressImage(file){return new Promise(res=>{const img=new Image();const r=new FileReader();r.onload=()=>{img.onload=()=>{const max=1100;let w=img.width,h=img.height;if(w>max||h>max){const s=Math.min(max/w,max/h);w=Math.round(w*s);h=Math.round(h*s)}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',.72))};img.src=r.result};r.readAsDataURL(file)})}
-async function handleImage(e,type){const file=e.target.files[0];if(!file)return;const p=currentTrade()||state.plan||blankTrade();p[type]=await compressImage(file);if(p.id)upsertTrade(p);else state.plan=p;renderAll();scheduleSave()}
+async function handleImage(e,type){
+  const file=e.target.files[0];
+  if(!file)return;
+  const image=await compressImage(file);
+  if(isCreateScreenActive()){
+    if(!formDraft)formDraft=collectFormDraft();
+    formDraft[type]=image;
+    formDirty=true;
+    $(type+'Preview').innerHTML=imgHtml(image);
+    return;
+  }
+  const p=currentTrade()||state.plan||blankTrade();
+  p[type]=image;
+  if(p.id)upsertTrade(p);else state.plan=p;
+  renderAll();
+  scheduleSave();
+}
 async function savePlan(){
-  const editingTrade=currentTrade();
-  const isNew=!editingTrade;
+  const editingTrade=formMode==='edit'?(currentTrade()||state.activeTrades.find(t=>t.id===formDraft?.id)):null;
+  const isNew=formMode==='new'||!editingTrade;
   const deviationChanges=!isNew?pendingDeviationChanges():[];
   const p=editingTrade?{...editingTrade}:blankTrade();
 
@@ -288,6 +369,8 @@ async function savePlan(){
   p.zone=num($('fZone').value);
   p.why=$('fWhy').value;
   p.rule=$('fRule').value;
+  p.hkcm=formDraft?.hkcm??p.hkcm;
+  p.tv=formDraft?.tv??p.tv;
   p.updatedAt=new Date().toISOString();
 
   if(!isNew&&deviationChanges.length){
@@ -315,6 +398,7 @@ async function savePlan(){
 
   if($('deviationReason'))$('deviationReason').value='';
   if($('deviationNote'))$('deviationNote').value='';
+  clearFormDraft();
   renderAll();
   show('plan');
 
@@ -344,10 +428,10 @@ function milestoneDates(done){const trades=[...(state.trades||[])].reverse();let
 function renderChallenge(){const snap=challengeSnapshot();if($('accountStart'))$('accountStart').value=state.settings.accountStart||'';$('accountBalance').textContent=euroShort(snap.balance);$('journalProfit').textContent=euroShort(snap.pnl);$('wealthNow').textContent=snap.done+' / '+CHALLENGE_BOXES;$('wealthPct').textContent=snap.pct+'%';$('wealthOpen').textContent=euroShort(snap.open);$('nextMilestone').textContent=snap.done>=CHALLENGE_BOXES?'Ziel erreicht':euroShort(snap.next);const bar=$('wealthBar');if(bar)bar.style.width=snap.pct+'%';const dates=milestoneDates(snap.done);$('boxes').innerHTML=Array.from({length:CHALLENGE_BOXES},(_,i)=>{const n=i+1, amount=n*CHALLENGE_BOX_VALUE, done=n<=snap.done;return `<div class="box ${done?'done':''}"><b>${n}</b><span>${euroShort(amount)}</span><small>${done?(dates[n]||'erreicht'):''}</small></div>`}).join('')}
 function marketSelect(){const val=$('fMarketSelect').value;const m=markets.find(x=>x[0]===val);if(!m)return;if(val!=='CUSTOM'){$('fSymbol').value=m[0];$('fMarket').value=m[2]}}
 function clock(){$('clockPill').textContent=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}
-function boot(){makeNav();$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnNewTrade').onclick=startNewTrade;$('btnBackDesk').onclick=()=>{selectedTradeId=null;renderPlan();scrollTo(0,0)};$('btnEditTrade').onclick=editSelectedTrade;if($('closeMode'))$('closeMode').onchange=()=>renderPlan();if($('closePrice'))$('closePrice').oninput=()=>renderPlan();$('btnExportJournal').onclick=exportJournal;if($('btnSaveAccount'))$('btnSaveAccount').onclick=saveAccountBase;$('fMarketSelect').onchange=()=>{marketSelect();renderDeviationPanel()};
+function boot(){makeNav();$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnNewTrade').onclick=startNewTrade;$('btnBackDesk').onclick=()=>{selectedTradeId=null;renderPlan();scrollTo(0,0)};$('btnEditTrade').onclick=editSelectedTrade;if($('closeMode'))$('closeMode').onchange=()=>renderPlan();if($('closePrice'))$('closePrice').oninput=()=>renderPlan();$('btnExportJournal').onclick=exportJournal;if($('btnSaveAccount'))$('btnSaveAccount').onclick=saveAccountBase;$('fMarketSelect').onchange=()=>{marketSelect();markFormDirty();renderDeviationPanel()};
   ['fMarket','fSymbol','fDirection','fPositionStatus','fContracts','fPointValue','fEntry','fStop','fTarget','fZone','fWhy','fRule'].forEach(id=>{
     const el=$(id);if(!el)return;
-    el.addEventListener('input',renderDeviationPanel);
-    el.addEventListener('change',renderDeviationPanel);
+    el.addEventListener('input',()=>{markFormDirty();renderDeviationPanel()});
+    el.addEventListener('change',()=>{markFormDirty();renderDeviationPanel()});
   });$('hkcmFile').onchange=e=>handleImage(e,'hkcm');$('tvFile').onchange=e=>handleImage(e,'tv');$('modalClose').onclick=()=>$('imgModal').classList.remove('show');$('imgModal').onclick=e=>{if(e.target.id==='imgModal')$('imgModal').classList.remove('show')};document.addEventListener('click',e=>{if(e.target.classList.contains('zoomable')){$('modalImg').src=e.target.src;$('imgModal').classList.add('show')}});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refreshAllMarketData()});clock();setInterval(clock,30000);renderAll()}
 boot();
