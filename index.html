@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Atlas V5.7.5 Multi-Trade Desk</title>
+  <title>Atlas V5.8 Brain & Live Engine</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -48,6 +48,7 @@
           <div class="statusCluster">
             <span id="clockPill" class="statusPill">--:--</span>
             <span id="syncPill" class="statusPill">Cloud</span>
+            <span id="dataPill" class="statusPill">Marktdaten warten</span>
           </div>
         </div>
 
@@ -93,8 +94,8 @@
                 <div class="stat"><b id="livePrice">-</b><br>Live-Kurs</div>
                 <div class="stat"><b id="liveChange">-</b><br>Veränderung</div>
               </div>
-              <p id="liveMsg">Live-Daten noch nicht aktualisiert.</p>
-              <button id="btnYahoo" class="secondary">Yahoo-Kurs aktualisieren</button>
+              <p id="liveMsg">Live-Daten werden automatisch aktualisiert.</p>
+              <button id="btnYahoo" class="secondary">Live-Kurs jetzt aktualisieren</button>
             </div>
 
             <div id="decision" class="card hidden">
