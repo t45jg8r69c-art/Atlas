@@ -370,61 +370,83 @@ function renderBrain(p,current,k,mentor){
   $('decision').classList.toggle('hidden',!['entry_approaching','stop_approaching','target_approaching'].includes(k.key));
 }
 function imgHtml(src){return src?`<img src="${src}" class="zoomable">`:`<div class="emptyShot">Noch kein Screenshot<br>über Eingabe hinzufügen</div>`}
-async function compressImage(file){
+function readFileDataUrl(file){
   return new Promise((resolve,reject)=>{
-    if(!file.type.startsWith('image/')){
-      reject(new Error('Datei ist kein Bild'));
-      return;
-    }
-    const img=new Image();
     const reader=new FileReader();
-
     reader.onerror=()=>reject(new Error('Bilddatei konnte nicht gelesen werden'));
-    img.onerror=()=>reject(new Error('Bild konnte nicht geladen werden'));
-
-    reader.onload=()=>{
-      img.onload=()=>{
-        try{
-          const max=1100;
-          let w=img.naturalWidth||img.width;
-          let h=img.naturalHeight||img.height;
-          if(!w||!h)throw new Error('Ungültige Bildgröße');
-
-          if(w>max||h>max){
-            const scale=Math.min(max/w,max/h);
-            w=Math.round(w*scale);
-            h=Math.round(h*scale);
-          }
-
-          const canvas=document.createElement('canvas');
-          canvas.width=w;
-          canvas.height=h;
-          const ctx=canvas.getContext('2d');
-          if(!ctx)throw new Error('Canvas nicht verfügbar');
-          ctx.drawImage(img,0,0,w,h);
-          resolve(canvas.toDataURL('image/jpeg',.72));
-        }catch(error){
-          reject(error);
-        }
-      };
-      img.src=reader.result;
-    };
+    reader.onload=()=>resolve(String(reader.result||''));
     reader.readAsDataURL(file);
   });
 }
 
+async function canvasDataFromBitmap(bitmap){
+  const max=1100;
+  let w=bitmap.width;
+  let h=bitmap.height;
+  if(!w||!h)throw new Error('Ungültige Bildgröße');
+  if(w>max||h>max){
+    const scale=Math.min(max/w,max/h);
+    w=Math.max(1,Math.round(w*scale));
+    h=Math.max(1,Math.round(h*scale));
+  }
+  const canvas=document.createElement('canvas');
+  canvas.width=w;
+  canvas.height=h;
+  const ctx=canvas.getContext('2d');
+  if(!ctx)throw new Error('Canvas nicht verfügbar');
+  ctx.drawImage(bitmap,0,0,w,h);
+  return canvas.toDataURL('image/jpeg',.72);
+}
+
+async function compressImage(file){
+  if(!file)throw new Error('Keine Datei ausgewählt');
+  const originalData=await readFileDataUrl(file);
+
+  // Modern browsers and newer iPhones.
+  if(typeof createImageBitmap==='function'){
+    try{
+      const bitmap=await createImageBitmap(file);
+      const result=await canvasDataFromBitmap(bitmap);
+      if(typeof bitmap.close==='function')bitmap.close();
+      return result;
+    }catch(error){
+      console.warn('createImageBitmap fallback',error);
+    }
+  }
+
+  // Safari/browser fallback.
+  try{
+    const img=await new Promise((resolve,reject)=>{
+      const el=new Image();
+      el.onload=()=>resolve(el);
+      el.onerror=()=>reject(new Error('Bildformat konnte nicht dekodiert werden'));
+      el.src=originalData;
+    });
+    return await canvasDataFromBitmap(img);
+  }catch(error){
+    console.warn('Image decode fallback',error);
+  }
+
+  // Last fallback: original image, provided it is small enough for the cloud document.
+  if(originalData.length<=850000)return originalData;
+  throw new Error('Bild ist zu groß oder das Format wird nicht unterstützt');
+}
+
 async function handleImage(e,type){
-  const input=e.target;
-  const file=input.files&&input.files[0];
+  const input=e.currentTarget||e.target;
+  const file=input?.files?.[0];
   if(!file)return;
 
-  try{
-    if($('saveMsg'))$('saveMsg').textContent='Screenshot wird verarbeitet...';
-    const image=await compressImage(file);
+  const preview=$(type+'Preview');
 
-    if(!isCreateScreenActive()){
-      throw new Error('Screenshot-Upload ist nur in der Eingabemaske möglich.');
-    }
+  try{
+    if($('saveMsg'))$('saveMsg').textContent='Screenshot wird eingelesen...';
+
+    // Immediate local preview confirms that the file selection worked.
+    const immediate=await readFileDataUrl(file);
+    if(preview)preview.innerHTML=imgHtml(immediate);
+
+    const image=await compressImage(file);
 
     if(!formDraft){
       formDraft=formMode==='edit'&&currentTrade()
@@ -432,23 +454,21 @@ async function handleImage(e,type){
         : emptyTradeDraft();
     }
 
-    formDraft={...collectFormDraft(),[type]:image};
+    // Preserve all currently typed form values and only replace this screenshot.
+    const currentDraft=collectFormDraft();
+    formDraft={...currentDraft,[type]:image};
     formDirty=true;
 
-    const preview=$(type+'Preview');
     if(preview)preview.innerHTML=imgHtml(image);
+    if($('saveMsg'))$('saveMsg').textContent='Screenshot im Entwurf gespeichert. Bitte den Trade speichern.';
 
-    if($('saveMsg')){
-      $('saveMsg').textContent='Screenshot im Entwurf gespeichert. Bitte Trade speichern.';
-    }
     renderDeviationPanel();
   }catch(error){
     console.error('Screenshot upload failed',error);
-    if($('saveMsg')){
-      $('saveMsg').textContent='Screenshot konnte nicht verarbeitet werden. Bitte JPG oder PNG erneut auswählen.';
-    }
+    if(preview)preview.innerHTML='<div class="emptyShot">Screenshot konnte nicht geladen werden.</div>';
+    if($('saveMsg'))$('saveMsg').textContent='Screenshot konnte nicht verarbeitet werden. Bitte JPG oder PNG verwenden oder das Bild vorher verkleinern.';
   }finally{
-    input.value='';
+    if(input)input.value='';
   }
 }
 
@@ -537,5 +557,5 @@ function boot(){makeNav();$('btnLogin').onclick=login;$('btnRegister').onclick=r
     const el=$(id);if(!el)return;
     el.addEventListener('input',()=>{markFormDirty();renderDeviationPanel()});
     el.addEventListener('change',()=>{markFormDirty();renderDeviationPanel()});
-  });$('hkcmFile').onchange=e=>handleImage(e,'hkcm');$('tvFile').onchange=e=>handleImage(e,'tv');$('modalClose').onclick=()=>$('imgModal').classList.remove('show');$('imgModal').onclick=e=>{if(e.target.id==='imgModal')$('imgModal').classList.remove('show')};document.addEventListener('click',e=>{if(e.target.classList.contains('zoomable')){$('modalImg').src=e.target.src;$('imgModal').classList.add('show')}});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refreshAllMarketData()});clock();setInterval(clock,30000);renderAll()}
+  });$('hkcmFile').addEventListener('change',e=>handleImage(e,'hkcm'));$('tvFile').addEventListener('change',e=>handleImage(e,'tv'));$('modalClose').onclick=()=>$('imgModal').classList.remove('show');$('imgModal').onclick=e=>{if(e.target.id==='imgModal')$('imgModal').classList.remove('show')};document.addEventListener('click',e=>{if(e.target.classList.contains('zoomable')){$('modalImg').src=e.target.src;$('imgModal').classList.add('show')}});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refreshAllMarketData()});clock();setInterval(clock,30000);renderAll()}
 boot();

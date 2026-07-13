@@ -82,3 +82,6 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .uploadBox input[type="file"]{margin-bottom:10px}
 
 /* Sprint 5.8.6 – vollständig isolierte Trade-Entwürfe */
+
+/* Sprint 5.8.7 – robuste Screenshot-Verarbeitung */
+.uploadBox input[type="file"]{display:block;width:100%}
