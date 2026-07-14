@@ -3,13 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Atlas V5.8.7 Stability Refactor</title>
-  <link rel="stylesheet" href="style.css?v=587-mobile-compact-all-1" />
+  <title>ATLAS – Trade Your Plan</title>
+  <meta name="theme-color" content="#07101c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ATLAS" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="format-detection" content="telephone=no" />
+  <link rel="manifest" href="manifest.webmanifest?v=589-nautilus-1" />
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=589-pwa-1" />
+  <link rel="stylesheet" href="style.css?v=589-nautilus-1" />
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
     <div class="auth-card">
-      <div class="logo">A</div>
+      <div class="logo atlasOfficialMark"><img src="assets/atlas-app-icon-master.png?v=589-nautilus-1" alt="ATLAS Nautilus Logo"></div>
       <div class="brand">ATLAS</div>
       <div class="tag">TRADE YOUR PLAN</div>
       <h1>Cloud Login</h1>
@@ -27,7 +35,7 @@
   <div id="app" class="app hidden">
     <aside class="side">
       <div class="logoBox">
-        <div class="logo">A</div>
+        <div class="logo atlasOfficialMark"><img src="assets/atlas-app-icon-master.png?v=589-nautilus-1" alt="ATLAS Nautilus Logo"></div>
         <div class="brand">ATLAS</div>
         <div class="tag">CLOUD FOUNDATION</div>
       </div>
@@ -266,7 +274,16 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase.js?v=587-stability-refactor-1"></script>
-  <script src="app.js?v=587-mobile-compact-1"></script>
+  <script src="firebase.js?v=589-nautilus-1"></script>
+  <script src="app.js?v=589-nautilus-1"></script>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js?v=589-pwa-1')
+          .catch(error => console.warn('ATLAS Service Worker konnte nicht registriert werden:', error));
+      });
+    }
+  </script>
 </body>
 </html>
