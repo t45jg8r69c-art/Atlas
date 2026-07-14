@@ -244,9 +244,12 @@ function normalizeState(data={}){
   if(!Array.isArray(s.challenge))s.challenge=[];
   if(!Array.isArray(s.deletedTradeIds))s.deletedTradeIds=[];
 
-  // Gelöschte Trades dürfen weder durch alte Cloud-Snapshots noch durch verspätete
-  // Live-Kurs-Antworten wieder in den Trading Desk gelangen.
-  const deletedIds=new Set(s.deletedTradeIds);
+  // Lokale Tombstones bleiben auch dann erhalten, wenn unmittelbar nach dem Löschen
+  // noch ein älterer Firestore-Snapshot eintrifft. So kann ein gelöschter Trade
+  // niemals durch eine verzögerte Cloud-Antwort wieder auftauchen.
+  for(const id of s.deletedTradeIds) localDeletedTradeIds.add(id);
+  const deletedIds=new Set([...s.deletedTradeIds,...localDeletedTradeIds]);
+  s.deletedTradeIds=[...deletedIds];
   s.activeTrades=s.activeTrades.filter(t=>!deletedIds.has(t?.id));
 
   // Nur echte Altbestände ohne activeTrades-Feld migrieren.
@@ -323,6 +326,7 @@ function upsertTrade(trade){
 }
 function removeActiveTrade(id){
   if(!id)return;
+  localDeletedTradeIds.add(id);
   if(!Array.isArray(state.deletedTradeIds))state.deletedTradeIds=[];
   if(!state.deletedTradeIds.includes(id))state.deletedTradeIds.push(id);
   state.activeTrades=(state.activeTrades||[]).filter(t=>t.id!==id);
@@ -330,7 +334,55 @@ function removeActiveTrade(id){
   if(selectedTradeId===id)selectedTradeId=null;
   state.plan=state.activeTrades[0]||{...tradeTemplate};
 }
-async function deleteActiveTrade(){const p=currentTrade();if(!p)return;const ok=confirm(`Aktiven Trade „${p.market}“ wirklich löschen?\n\nDer Trade wird dauerhaft aus den aktiven Trades entfernt und NICHT ins Journal eingetragen.`);if(!ok)return;removeActiveTrade(p.id);clearFormDraft();renderAll();show('plan');await saveCloud();}
+async function deleteActiveTrade(){
+  const p=currentTrade();
+  if(!p||!user)return;
+  const ok=confirm(`Aktiven Trade „${p.market}“ wirklich löschen?\n\nDer Trade wird dauerhaft aus den aktiven Trades entfernt und NICHT ins Journal eingetragen.`);
+  if(!ok)return;
+
+  const deletedId=p.id;
+
+  // Sofort lokal sperren und entfernen. Diese Sperre überlebt alte Cloud-Snapshots.
+  removeActiveTrade(deletedId);
+  clearFormDraft();
+  renderAll();
+  show('plan');
+  cloudMsg('Trade wird gelöscht...');
+
+  try{
+    // Zuerst eventuell bereits laufende ältere Saves auslaufen lassen.
+    while(saving) await new Promise(resolve=>setTimeout(resolve,40));
+    clearTimeout(saveTimer);
+
+    // Danach den aktuellen Cloud-Stand atomar lesen und genau diesen Trade entfernen.
+    await atlasFirebase.db.runTransaction(async tx=>{
+      const ref=stateRef();
+      const snap=await tx.get(ref);
+      const cloud=snap.exists?snap.data():{};
+      const cloudActive=Array.isArray(cloud.activeTrades)?cloud.activeTrades:[];
+      const cloudDeleted=Array.isArray(cloud.deletedTradeIds)?cloud.deletedTradeIds:[];
+      const nextActive=cloudActive.filter(t=>t?.id!==deletedId);
+      const nextDeleted=[...new Set([...cloudDeleted,...state.deletedTradeIds,...localDeletedTradeIds,deletedId])];
+      tx.set(ref,{
+        activeTrades:nextActive,
+        deletedTradeIds:nextDeleted,
+        plan:nextActive[0]||{...tradeTemplate},
+        updatedAt:new Date().toISOString()
+      },{merge:true});
+    });
+
+    // Lokalen Zustand nochmals auf die endgültige Cloud-Löschung ausrichten.
+    state.activeTrades=(state.activeTrades||[]).filter(t=>t.id!==deletedId);
+    state.deletedTradeIds=[...new Set([...(state.deletedTradeIds||[]),deletedId])];
+    state.plan=state.activeTrades[0]||{...tradeTemplate};
+    cloudMsg('Trade dauerhaft gelöscht');
+    renderAll();
+  }catch(e){
+    console.error('Trade delete failed',e);
+    cloudMsg('Löschen fehlgeschlagen');
+    alert('Der Trade konnte nicht dauerhaft aus der Cloud gelöscht werden. Bitte erneut versuchen.');
+  }
+}
 function makeNav(){const html=tabs.map((t,i)=>`<button data-tab="${t[0]}" class="${i?'':'active'}">${t[1]}</button>`).join('');$('nav').innerHTML=html;$('bottom').innerHTML=html;document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.tab)))}
 function show(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
