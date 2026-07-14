@@ -892,3 +892,10 @@ body{
   object-fit:cover!important;
   transform:scale(1.015);
 }
+
+
+/* V5.8.9 – Official icon: Nautilus only */
+.logo.atlasOfficialMark img{
+  transform:none!important;
+  object-fit:cover!important;
+}
