@@ -136,9 +136,23 @@ function optionalNumber(value){
   const parsed=num(value);
   return Number.isFinite(parsed)?parsed:null;
 }
-function crossedExitLevel(p,previous,current){
+function priceInsidePlanRange(p,price){
+  if(!Number.isFinite(price))return false;
+  const target=optionalNumber(p.target);
+  const stop=optionalNumber(p.stop);
+  if(!Number.isFinite(target)||!Number.isFinite(stop))return false;
+  const low=Math.min(stop,target);
+  const high=Math.max(stop,target);
+  return price>low&&price<high;
+}
+function crossedExitLevel(p,previous,current,source){
   if(!Number.isFinite(previous)||!Number.isFinite(current))return null;
   if((p.positionStatus||'active')!=='active')return null;
+  if(!p.autoExitArmed)return null;
+  // A provider switch can briefly mix quotes with different freshness/basis.
+  // Never auto-close across two different data providers.
+  if(p.previousDataSource&&source&&p.previousDataSource!==source)return null;
+
   const target=optionalNumber(p.target);
   const stop=optionalNumber(p.stop);
   const isLong=p.direction==='Long';
@@ -161,7 +175,9 @@ function applyLivePrice(p,quote,source){
   // A blank current price must not be treated as 0. The first quote only
   // establishes the live baseline and must never auto-close a new trade.
   const previous=optionalNumber(p.current);
+  const previousSource=p.dataSource||null;
   p.previousPrice=previous;
+  p.previousDataSource=previousSource;
   p.lastPrice=quote.price;
   p.current=quote.price;
   p.liveUpdatedAt=new Date().toISOString();
@@ -176,10 +192,13 @@ function applyLivePrice(p,quote,source){
     p.entryTriggeredAt=new Date().toISOString();
   }
 
-  // Automatic journal transfer is only allowed after Atlas has observed an
-  // actual crossing of stop or target between two live quotes. This prevents
-  // broker/Yahoo price-basis differences from deleting a newly created trade.
-  const automaticClose=crossedExitLevel(p,previous,quote.price);
+  // Auto-exit is armed only after Atlas has actually seen a valid live quote
+  // inside the trade's stop/target corridor. This prevents a newly created
+  // trade from disappearing because Yahoo and the broker use different price
+  // bases or because proxy providers return quotes with different freshness.
+  if(priceInsidePlanRange(p,quote.price))p.autoExitArmed=true;
+
+  const automaticClose=crossedExitLevel(p,previous,quote.price,source);
   if(automaticClose){
     archiveAutomaticTrade(p,automaticClose);
     return'closed';
@@ -679,6 +698,19 @@ async function savePlan(){
   p.hkcm=formDraft&&typeof formDraft.hkcm==='string'?formDraft.hkcm:'';
   p.tv=formDraft&&typeof formDraft.tv==='string'?formDraft.tv:'';
   p.updatedAt=new Date().toISOString();
+  if(isNew){
+    p.current='';
+    p.previousPrice=null;
+    p.lastPrice=null;
+    p.liveUpdatedAt=null;
+    p.dataSource=null;
+    p.previousDataSource=null;
+    p.liveChange=null;
+    p.liveStatus='pending';
+    p.liveErrorCount=0;
+    p.liveErrorAt=null;
+    p.autoExitArmed=false;
+  }
 
   if(!isNew&&deviationChanges.length){
     const reason=$('deviationReason').value;
