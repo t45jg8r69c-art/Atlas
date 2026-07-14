@@ -555,3 +555,21 @@ button.dangerBtn:hover{
   .bottom{height:58px!important}
   .bottom button{padding:8px 2px!important;font-size:10px!important}
 }
+
+
+/* V5.8.7 – Mobile Compact Desk: Marktbezeichnungen vollständig lesbar */
+@media(max-width:820px){
+  .activeTradeCard > div:nth-child(2) > b{
+    font-size:18px!important;
+    line-height:1.12!important;
+    white-space:normal!important;
+    overflow:visible!important;
+    text-overflow:clip!important;
+    max-width:none!important;
+    display:block!important;
+  }
+  .activeTradeCard .tradeTypeBadge{
+    font-size:9px!important;
+    padding:4px 7px!important;
+  }
+}
