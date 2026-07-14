@@ -50,6 +50,12 @@ function detectPlanChanges(original,current){
     ['hkcm','HKCM-Screenshot'],['tv','TradingView-Screenshot']
   ];
   return fields.flatMap(([key,label])=>{
+    if(key==='hkcm'||key==='tv'){
+      const beforeRaw=String(original[key]||'');
+      const afterRaw=String(current[key]||'');
+      if(beforeRaw===afterRaw)return[];
+      return[{field:key,label,before:beforeRaw?'Vorhanden':'Nicht vorhanden',after:afterRaw?'Geändert / vorhanden':'Entfernt'}];
+    }
     const before=normalizedComparable(original[key]);
     const after=normalizedComparable(current[key]);
     if(before===after)return[];
@@ -58,7 +64,7 @@ function detectPlanChanges(original,current){
 }
 function formatDeviationValue(change,value){
   if(['entry','stop','target','zone','contracts','pointValue'].includes(change.field))return fmt(value);
-  if(['hkcm','tv'].includes(change.field))return value?'Vorhanden':'Nicht vorhanden';
+  if(['hkcm','tv'].includes(change.field))return String(value||'Nicht vorhanden');
   return String(value||'–');
 }
 function pendingDeviationChanges(){
@@ -584,7 +590,7 @@ function readFileDataUrl(file){
 }
 
 async function canvasDataFromBitmap(bitmap){
-  const max=1100;
+  const max=900;
   let w=bitmap.width;
   let h=bitmap.height;
   if(!w||!h)throw new Error('Ungültige Bildgröße');
@@ -599,7 +605,7 @@ async function canvasDataFromBitmap(bitmap){
   const ctx=canvas.getContext('2d');
   if(!ctx)throw new Error('Canvas nicht verfügbar');
   ctx.drawImage(bitmap,0,0,w,h);
-  return canvas.toDataURL('image/jpeg',.72);
+  return canvas.toDataURL('image/jpeg',.68);
 }
 
 async function compressImage(file){
@@ -662,6 +668,9 @@ async function handleImage(e,type){
     const currentDraft=collectFormDraft();
     formDraft={...currentDraft,[type]:image};
     formDirty=true;
+
+    if(type==='hkcm')formDraft.hkcm=image;
+    if(type==='tv')formDraft.tv=image;
 
     if(preview)preview.innerHTML=imgHtml(image);
     if($('saveMsg'))$('saveMsg').textContent='Screenshot im Entwurf gespeichert. Bitte den Trade speichern.';
