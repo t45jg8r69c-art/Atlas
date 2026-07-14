@@ -14,10 +14,11 @@ const defaultState={
   trades:[],
   challenge:[],
   settings:{autoYahoo:false,accountStart:0},
-  deletedTradeIds:[],
   updatedAt:null
 };
-let state=structuredClone(defaultState), user=null, unsub=null, saving=false, savePending=false, saveTimer=null, selectedTradeId=null, lastLiveById={}, marketTimer=null, marketBusy=false, formDraft=null, formDirty=false, formMode='none';
+let state=structuredClone(defaultState), user=null, unsub=null, saving=false, saveTimer=null, selectedTradeId=null, lastLiveById={}, marketTimer=null, marketBusy=false, formDraft=null, formDirty=false, formMode='none';
+const locallyDeletedTradeIds=new Set();
+let cloudWriteQueue=Promise.resolve();
 const $=id=>document.getElementById(id);
 function fmt(n){const x=Number(n);return Number.isFinite(x)?x.toLocaleString('de-DE',{maximumFractionDigits:2}):'-'}
 function num(v){return Number(String(v??'').replace(',','.'))}
@@ -240,17 +241,9 @@ function normalizeState(data={}){
   const hasActiveTradesField=Object.prototype.hasOwnProperty.call(data,'activeTrades');
   let s={...structuredClone(defaultState),...data,settings:{...defaultState.settings,...(data.settings||{})}};
   if(!Array.isArray(s.activeTrades))s.activeTrades=[];
+  s.activeTrades=s.activeTrades.filter(t=>!locallyDeletedTradeIds.has(t?.id));
   if(!Array.isArray(s.trades))s.trades=[];
   if(!Array.isArray(s.challenge))s.challenge=[];
-  if(!Array.isArray(s.deletedTradeIds))s.deletedTradeIds=[];
-
-  // Lokale Tombstones bleiben auch dann erhalten, wenn unmittelbar nach dem Löschen
-  // noch ein älterer Firestore-Snapshot eintrifft. So kann ein gelöschter Trade
-  // niemals durch eine verzögerte Cloud-Antwort wieder auftauchen.
-  for(const id of s.deletedTradeIds) localDeletedTradeIds.add(id);
-  const deletedIds=new Set([...s.deletedTradeIds,...localDeletedTradeIds]);
-  s.deletedTradeIds=[...deletedIds];
-  s.activeTrades=s.activeTrades.filter(t=>!deletedIds.has(t?.id));
 
   // Nur echte Altbestände ohne activeTrades-Feld migrieren.
   // Ein absichtlich leerer Trading Desk darf niemals aus data.plan wiederbelebt werden.
@@ -317,72 +310,33 @@ function safeRenderAll(){
   renderChallenge();
 }
 
-function upsertTrade(trade){
-  if((state.deletedTradeIds||[]).includes(trade.id))return;
-  const arr=state.activeTrades||[];
-  const i=arr.findIndex(t=>t.id===trade.id);
-  if(i>=0)arr[i]=trade;else arr.unshift(trade);
-  state.activeTrades=arr;state.plan=trade;selectedTradeId=trade.id;
-}
-function removeActiveTrade(id){
-  if(!id)return;
-  localDeletedTradeIds.add(id);
-  if(!Array.isArray(state.deletedTradeIds))state.deletedTradeIds=[];
-  if(!state.deletedTradeIds.includes(id))state.deletedTradeIds.push(id);
-  state.activeTrades=(state.activeTrades||[]).filter(t=>t.id!==id);
-  delete lastLiveById[id];
-  if(selectedTradeId===id)selectedTradeId=null;
-  state.plan=state.activeTrades[0]||{...tradeTemplate};
-}
+function upsertTrade(trade){const arr=state.activeTrades||[];const i=arr.findIndex(t=>t.id===trade.id);if(i>=0)arr[i]=trade;else arr.unshift(trade);state.activeTrades=arr;state.plan=trade;selectedTradeId=trade.id}
+function removeActiveTrade(id){state.activeTrades=(state.activeTrades||[]).filter(t=>t.id!==id);delete lastLiveById[id];if(selectedTradeId===id)selectedTradeId=null;state.plan=state.activeTrades[0]||{...tradeTemplate};}
 async function deleteActiveTrade(){
   const p=currentTrade();
-  if(!p||!user)return;
-  const ok=confirm(`Aktiven Trade „${p.market}“ wirklich löschen?\n\nDer Trade wird dauerhaft aus den aktiven Trades entfernt und NICHT ins Journal eingetragen.`);
+  if(!p)return;
+  const ok=window.confirm(`Aktiven Trade „${p.market}“ wirklich löschen?
+
+Der Trade wird NICHT ins Journal eingetragen.`);
   if(!ok)return;
 
-  const deletedId=p.id;
-
-  // Sofort lokal sperren und entfernen. Diese Sperre überlebt alte Cloud-Snapshots.
-  removeActiveTrade(deletedId);
-  clearFormDraft();
+  const id=p.id;
+  locallyDeletedTradeIds.add(id);
+  clearTimeout(saveTimer);
+  removeActiveTrade(id);
   renderAll();
   show('plan');
   cloudMsg('Trade wird gelöscht...');
 
   try{
-    // Zuerst eventuell bereits laufende ältere Saves auslaufen lassen.
-    while(saving) await new Promise(resolve=>setTimeout(resolve,40));
-    clearTimeout(saveTimer);
-
-    // Danach den aktuellen Cloud-Stand atomar lesen und genau diesen Trade entfernen.
-    await atlasFirebase.db.runTransaction(async tx=>{
-      const ref=stateRef();
-      const snap=await tx.get(ref);
-      const cloud=snap.exists?snap.data():{};
-      const cloudActive=Array.isArray(cloud.activeTrades)?cloud.activeTrades:[];
-      const cloudDeleted=Array.isArray(cloud.deletedTradeIds)?cloud.deletedTradeIds:[];
-      const nextActive=cloudActive.filter(t=>t?.id!==deletedId);
-      const nextDeleted=[...new Set([...cloudDeleted,...state.deletedTradeIds,...localDeletedTradeIds,deletedId])];
-      tx.set(ref,{
-        activeTrades:nextActive,
-        deletedTradeIds:nextDeleted,
-        plan:nextActive[0]||{...tradeTemplate},
-        updatedAt:new Date().toISOString()
-      },{merge:true});
-    });
-
-    // Lokalen Zustand nochmals auf die endgültige Cloud-Löschung ausrichten.
-    state.activeTrades=(state.activeTrades||[]).filter(t=>t.id!==deletedId);
-    state.deletedTradeIds=[...new Set([...(state.deletedTradeIds||[]),deletedId])];
-    state.plan=state.activeTrades[0]||{...tradeTemplate};
+    await saveCloud();
     cloudMsg('Trade dauerhaft gelöscht');
-    renderAll();
-  }catch(e){
-    console.error('Trade delete failed',e);
+  }catch(error){
+    console.error('Trade delete failed',error);
     cloudMsg('Löschen fehlgeschlagen');
-    alert('Der Trade konnte nicht dauerhaft aus der Cloud gelöscht werden. Bitte erneut versuchen.');
   }
 }
+
 function makeNav(){const html=tabs.map((t,i)=>`<button data-tab="${t[0]}" class="${i?'':'active'}">${t[1]}</button>`).join('');$('nav').innerHTML=html;$('bottom').innerHTML=html;document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.tab)))}
 function show(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
@@ -393,34 +347,26 @@ function show(id){
 }
 function cloudMsg(t){$('cloudState').textContent=t;$('syncPill').textContent=t}
 function stateRef(){return atlasFirebase.db.collection('users').doc(user.uid).collection('atlas').doc('state')}
-function scheduleSave(){
-  if(!user)return;
-  cloudMsg('Speichert...');
-  clearTimeout(saveTimer);
-  saveTimer=setTimeout(saveCloud,450);
-}
+function scheduleSave(){if(!user||saving)return;cloudMsg('Speichert...');clearTimeout(saveTimer);saveTimer=setTimeout(saveCloud,450)}
 async function saveCloud(){
   if(!user)return;
-  if(saving){
-    savePending=true;
-    return;
-  }
-  saving=true;
-  try{
-    do{
-      savePending=false;
-      state.updatedAt=new Date().toISOString();
-      const snapshot=structuredClone(state);
-      await stateRef().set(snapshot,{merge:true});
-    }while(savePending);
-    cloudMsg('Cloud synchronisiert');
-  }catch(e){
-    cloudMsg('Cloud Fehler');
-    console.error(e);
-  }finally{
-    saving=false;
-    if(savePending)saveCloud();
-  }
+  clearTimeout(saveTimer);
+  const snapshot=structuredClone(state);
+  snapshot.updatedAt=new Date().toISOString();
+  cloudWriteQueue=cloudWriteQueue.then(async()=>{
+    try{
+      saving=true;
+      await stateRef().set(snapshot,{merge:false});
+      cloudMsg('Cloud synchronisiert');
+    }catch(e){
+      cloudMsg('Cloud Fehler');
+      console.error(e);
+      throw e;
+    }finally{
+      saving=false;
+    }
+  }).catch(()=>{});
+  return cloudWriteQueue;
 }
 function startCloud(uidVal){if(unsub)unsub();unsub=stateRef().onSnapshot(async snap=>{if(!snap.exists){state=normalizeState(state);await stateRef().set(state);return}const data=snap.data();state=normalizeState(data);if(selectedTradeId && !(state.activeTrades||[]).some(t=>t.id===selectedTradeId))selectedTradeId=null;renderAll();cloudMsg('Cloud synchronisiert')},err=>{console.error(err);cloudMsg('Cloud Fehler')})}
 async function login(){try{await atlasFirebase.auth.signInWithEmailAndPassword($('authEmail').value.trim(),$('authPassword').value);$('authMsg').textContent=''}catch(e){$('authMsg').textContent=authError(e)}}
@@ -697,12 +643,7 @@ async function fetchMarketDataForTrade(p,{silent=false}={}){
       const quote=parseYahoo(await res.json());
       return{provider,quote};
     }));
-    // Der Trade kann während des laufenden Netzwerk-Requests gelöscht worden sein.
-    // In diesem Fall darf die verspätete Antwort den gelöschten Trade nicht mehr verändern.
-    const stillActive=(state.activeTrades||[]).some(t=>t.id===p.id);
-    const explicitlyDeleted=(state.deletedTradeIds||[]).includes(p.id);
-    if(!stillActive||explicitlyDeleted)return false;
-
+    if(locallyDeletedTradeIds.has(p.id)||!(state.activeTrades||[]).some(t=>t.id===p.id))return false;
     applyLivePrice(p,winner.quote,winner.provider.name);
     if(!silent&&currentTrade()?.id===p.id)$('liveMsg').textContent=`Live-Kurs aktualisiert · ${winner.provider.name} · ${new Date().toLocaleTimeString('de-DE')}`;
     return true;
