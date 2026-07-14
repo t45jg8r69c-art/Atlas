@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="ATLAS" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="format-detection" content="telephone=no" />
-  <link rel="manifest" href="manifest.webmanifest?v=589-homescreen-final-1" />
-  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=589-homescreen-final-1" />
-  <link rel="stylesheet" href="style.css?v=589-homescreen-final-1" />
+  <link rel="manifest" href="manifest.webmanifest?v=5810-market-identity-1" />
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=5810-market-identity-1" />
+  <link rel="stylesheet" href="style.css?v=5810-market-identity-1" />
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
@@ -139,7 +139,7 @@
               <div class="label">Broker-Position</div>
               <div class="brokerTop">
                 <div>
-                  <span id="brokerSide" class="brokerSide">Kaufen</span>
+                  <span id="brokerSide" class="brokerSide">Long</span>
                   <b id="brokerContracts">1,0</b>
                   <span>zu</span>
                   <b id="brokerEntry">-</b>
@@ -191,8 +191,8 @@
           <select id="fMarketSelect"></select>
           <input id="fMarket" placeholder="Marktname" />
           <input id="fSymbol" placeholder="Yahoo Symbol" />
-          <label>Kaufen / Verkaufen</label>
-          <select id="fDirection"><option value="Long">Kaufen / Long</option><option value="Short">Verkaufen / Short</option></select>
+          <label>Richtung</label>
+          <select id="fDirection"><option value="Long">Long</option><option value="Short">Short</option></select>
           <label>Status</label>
           <select id="fPositionStatus"><option value="active">Position aktiv</option><option value="planned">Order geplant / noch kein Einstieg</option></select>
           <input id="fContracts" placeholder="Kontrakte, z. B. 1" inputmode="decimal" />
@@ -274,8 +274,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase.js?v=589-homescreen-final-1"></script>
-  <script src="app.js?v=589-homescreen-final-1"></script>
+  <script src="firebase.js?v=5810-market-identity-1"></script>
+  <script src="app.js?v=5810-market-identity-1"></script>
 
   <script>
     if ('serviceWorker' in navigator) {

@@ -1,10 +1,10 @@
-const CACHE_NAME = 'atlas-v5.8.9-homescreen-final-1';
+const CACHE_NAME = 'atlas-v5.8.10-market-identity-1';
 const APP_SHELL = [
   './',
   './index.html',
-  './style.css?v=589-homescreen-final-1',
-  './app.js?v=589-homescreen-final-1',
-  './firebase.js?v=589-homescreen-final-1',
+  './style.css?v=5810-market-identity-1',
+  './app.js?v=5810-market-identity-1',
+  './firebase.js?v=5810-market-identity-1',
   './manifest.webmanifest',
   './offline.html',
   './icons/apple-touch-icon.png',

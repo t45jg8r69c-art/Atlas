@@ -912,3 +912,96 @@ body{
   object-fit:cover!important;
   transform:none!important;
 }
+
+
+/* Sprint 5.8.10 – Market Identity & Trading Language */
+.marketIconCell{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  align-self:center;
+}
+.marketIdentity{
+  width:40px;
+  height:40px;
+  border-radius:50%;
+  display:inline-grid;
+  place-items:center;
+  flex:0 0 40px;
+  color:#fff;
+  font-size:12px;
+  line-height:1;
+  font-weight:900;
+  letter-spacing:-.3px;
+  border:1px solid rgba(255,255,255,.15);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12);
+}
+.marketIdentity.small{
+  width:32px;
+  height:32px;
+  flex-basis:32px;
+  font-size:10px;
+}
+.marketIdentity.dow{background:linear-gradient(145deg,#23a8e0,#0873a7)}
+.marketIdentity.nasdaq{background:linear-gradient(145deg,#24bce6,#0089b7)}
+.marketIdentity.sp500{background:linear-gradient(145deg,#e31f3b,#b7082b)}
+.marketIdentity.russell{background:linear-gradient(145deg,#8f315f,#5e173f)}
+.marketIdentity.dax{background:linear-gradient(145deg,#5c9df7,#245ca9)}
+.marketIdentity.gold{background:linear-gradient(145deg,#e8c45e,#a77b14);color:#151515}
+.marketIdentity.silver{background:linear-gradient(145deg,#dce4ee,#7e8fa5);color:#15202f}
+.marketIdentity.copper{background:linear-gradient(145deg,#d28655,#8e4826)}
+.marketIdentity.wti{background:linear-gradient(145deg,#5c6f87,#26384f)}
+.marketIdentity.brent{background:linear-gradient(145deg,#7b6655,#3f332a)}
+.marketIdentity.dxy{background:linear-gradient(145deg,#49a66f,#1e6a43)}
+.marketIdentity.eurusd{background:linear-gradient(145deg,#4664c9,#223375)}
+.marketIdentity.bitcoin{background:linear-gradient(145deg,#f6a51d,#c66c00)}
+.marketIdentity.custom{background:linear-gradient(145deg,#71839c,#43536b)}
+
+.activeTradeCard{
+  grid-template-columns:52px minmax(0,1fr) auto auto!important;
+}
+.activeTradeCard.positionCard,
+.activeTradeCard.orderCard{
+  border-left-width:1px!important;
+}
+.miniLamp{display:none!important}
+
+.journalMarketIcon{
+  display:flex;
+  align-items:flex-start;
+  justify-content:center;
+}
+#journal .tradeRow{
+  grid-template-columns:auto minmax(0,1fr) auto auto;
+}
+
+@media(max-width:820px){
+  .activeTradeCard{
+    grid-template-columns:38px minmax(0,1fr) auto!important;
+  }
+  .marketIdentity{
+    width:32px;
+    height:32px;
+    flex-basis:32px;
+    font-size:10px;
+  }
+  .marketIconCell{
+    align-self:start;
+    padding-top:2px;
+  }
+  .tradeLiveState{
+    grid-column:3!important;
+  }
+  .deskMeta{
+    grid-column:2!important;
+  }
+  #journal .tradeRow{
+    grid-template-columns:30px minmax(0,1fr) auto!important;
+  }
+  #journal .journalMarketIcon{
+    grid-row:1 / span 2;
+  }
+  #journal .tradeRow button{
+    grid-column:3;
+  }
+}
