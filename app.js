@@ -126,11 +126,35 @@ function yahooUrls(symbol){const endpoint=`https://query1.finance.yahoo.com/v8/f
 function parseYahoo(data){const result=data?.chart?.result?.[0];if(!result)throw new Error(data?.chart?.error?.description||'Keine Yahoo-Daten');const meta=result.meta||{};let price=Number(meta.regularMarketPrice);if(!Number.isFinite(price)){const closes=result.indicators?.quote?.[0]?.close||[];price=Number([...closes].reverse().find(Number.isFinite))}if(!Number.isFinite(price))throw new Error('Kein gültiger Kurs');const prev=Number(meta.chartPreviousClose??meta.previousClose??price);return{price,prev,change:prev?((price-prev)/prev*100):0}}
 function entryReached(p,price,previous){const entry=num(p.entry);if(!Number.isFinite(entry))return false;if(!p.entryTriggerSide){p.entryTriggerSide=price>entry?'down':'up'}if(p.entryTriggerSide==='down')return price<=entry||(Number.isFinite(previous)&&previous>entry&&price<=entry);return price>=entry||(Number.isFinite(previous)&&previous<entry&&price>=entry)}
 function archiveAutomaticTrade(p,mode){const exit=mode==='target'?num(p.target):num(p.stop);const dir=p.direction==='Long'?1:-1;const points=(exit-num(p.entry))*dir;const contracts=num(p.contracts)||1;const pointValue=num(p.pointValue)||1;const pnl=Math.round(points*contracts*pointValue);state.trades.unshift({date:new Date().toLocaleDateString('de-DE'),createdAt:new Date().toISOString(),market:p.market,direction:p.direction,result:Math.round(points),pnl,contracts,pointValue,entry:p.entry,target:p.target,stop:p.stop,exit,closeType:mode==='target'?'Take-Profit':'Stop-Loss',planDeviation:false,note:'Automatisch durch Live-Kurs erkannt',symbol:p.symbol,sourceTradeId:p.id,brainState:mode==='target'?'target_hit':'stop_hit',originalPlan:p.originalPlan||planSnapshot(p),deviations:Array.isArray(p.deviations)?p.deviations:[]});removeActiveTrade(p.id)}
-function applyLivePrice(p,quote,source){const previous=Number.isFinite(num(p.current))?num(p.current):null;p.previousPrice=previous;p.lastPrice=quote.price;p.current=quote.price;p.liveUpdatedAt=new Date().toISOString();p.dataSource=source;p.liveChange=quote.change;lastLiveById[p.id]={price:quote.price,change:quote.change,source,at:p.liveUpdatedAt};if((p.positionStatus||'active')!=='active'&&entryReached(p,quote.price,previous)){p.positionStatus='active';p.entryTriggeredAt=new Date().toISOString()}const close=brokerCloseStatus(p,quote.price);if(close.mode==='target'||close.mode==='stop'){archiveAutomaticTrade(p,close.mode);return'closed'}const nextState=tradeState(p,quote.price);p.brainState=nextState.key;mentorFor(p,nextState);p.updatedAt=new Date().toISOString();
-  if(isNew||!p.originalPlan)p.originalPlan=planSnapshot(p);
-  const initialState=tradeState(p,num(p.current)||num(p.entry));
-  p.brainState=initialState.key;
-  mentorFor(p,initialState);upsertTrade(p);return'updated'}
+function applyLivePrice(p,quote,source){
+  const previous=Number.isFinite(num(p.current))?num(p.current):null;
+  p.previousPrice=previous;
+  p.lastPrice=quote.price;
+  p.current=quote.price;
+  p.liveUpdatedAt=new Date().toISOString();
+  p.dataSource=source;
+  p.liveChange=quote.change;
+  lastLiveById[p.id]={price:quote.price,change:quote.change,source,at:p.liveUpdatedAt};
+
+  if(!p.originalPlan)p.originalPlan=planSnapshot(p);
+
+  if((p.positionStatus||'active')!=='active'&&entryReached(p,quote.price,previous)){
+    p.positionStatus='active';
+    p.entryTriggeredAt=new Date().toISOString();
+  }
+
+  const close=brokerCloseStatus(p,quote.price);
+  if(close.mode==='target'||close.mode==='stop'){
+    archiveAutomaticTrade(p,close.mode);
+    return'closed';
+  }
+
+  const nextState=tradeState(p,quote.price);
+  p.brainState=nextState.key;
+  mentorFor(p,nextState);
+  p.updatedAt=new Date().toISOString();
+  return'updated';
+}
 function tradeState(p,current){const dir=p.direction==='Long'?1:-1;const entry=num(p.entry),stop=num(p.stop),target=num(p.target);const risk=Math.max(Math.abs(entry-stop),0.000001);const reward=Math.max(Math.abs(target-entry),0.000001);const active=(p.positionStatus||'active')==='active';if(!active){const d=Math.abs(current-entry);return d<=risk*.10?{key:'entry_approaching',phase:'Einstieg naht',priority:2,headline:'Einstieg nähert sich',text:`Noch ${fmt(d)} Punkte bis zum Einstieg. Warte auf die Ausführung.`}:{key:'waiting',phase:'Warten auf Einstieg',priority:1,headline:'Keine Handlung erforderlich',text:`Noch ${fmt(d)} Punkte bis zum geplanten Einstieg.`}}const close=brokerCloseStatus(p,current);if(close.mode==='stop')return{key:'stop_hit',phase:'Stop-Loss erreicht',priority:5,headline:'Stop-Loss erreicht',text:'Der Trade wird automatisch zum Stopkurs ins Journal übernommen.'};if(close.mode==='target')return{key:'target_hit',phase:'Take-Profit erreicht',priority:5,headline:'Take-Profit erreicht',text:'Der Trade wird automatisch zum Zielkurs ins Journal übernommen.'};const pnl=(current-entry)*dir;const stopDistance=Math.abs(current-stop);const targetDistance=Math.abs(target-current);if(stopDistance<=risk*.18)return{key:'stop_approaching',phase:'Stopnähe',priority:4,headline:'Stop-Loss nähert sich',text:'Nicht verschieben. Die vorher definierte Invalidierung zählt.'};if(targetDistance<=reward*.12)return{key:'target_approaching',phase:'Take-Profit Nähe',priority:3,headline:'Take-Profit nähert sich',text:'Lass die Order arbeiten. Keine vorzeitige Entscheidung.'};if(Math.abs(pnl)<=risk*.05)return{key:'breakeven',phase:'Nahe Einstieg',priority:2,headline:'Ruhe bewahren',text:'Der Markt befindet sich nahe am Einstieg. Keine neue Entscheidung nötig.'};if(pnl<0)return{key:'risk',phase:'Im Risiko',priority:2,headline:'Plan bleibt gültig',text:`Der Stop-Loss ist ${fmt(stopDistance)} Punkte entfernt. Nicht aus Angst handeln.`};return{key:'profit',phase:'Im Gewinn',priority:1,headline:'Keine Handlung erforderlich',text:`Noch ${fmt(targetDistance)} Punkte bis zum Take-Profit.`}}
 
 const MENTOR_LIBRARY={
@@ -211,7 +235,34 @@ function mentorFor(p,tradeStateResult){
   };
 }
 
-function normalizeState(data={}){let s={...structuredClone(defaultState),...data,settings:{...defaultState.settings,...(data.settings||{})}};if(!Array.isArray(s.activeTrades))s.activeTrades=[];if(!Array.isArray(s.trades))s.trades=[];if(!Array.isArray(s.challenge))s.challenge=[];if(s.activeTrades.length===0 && data.plan){const migrated={...tradeTemplate,...data.plan,id:uid(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};migrated.originalPlan=migrated.originalPlan||planSnapshot(migrated);s.activeTrades=[migrated];s.plan=migrated}else if(s.activeTrades.length>0){s.activeTrades=s.activeTrades.map(t=>{const n={...tradeTemplate,...t,id:t.id||uid()};n.originalPlan=n.originalPlan||planSnapshot(n);if(!Array.isArray(n.deviations))n.deviations=[];return n});s.plan=s.activeTrades[0]}return s}
+function normalizeState(data={}){
+  const hasActiveTradesField=Object.prototype.hasOwnProperty.call(data,'activeTrades');
+  let s={...structuredClone(defaultState),...data,settings:{...defaultState.settings,...(data.settings||{})}};
+  if(!Array.isArray(s.activeTrades))s.activeTrades=[];
+  if(!Array.isArray(s.trades))s.trades=[];
+  if(!Array.isArray(s.challenge))s.challenge=[];
+
+  // Nur echte Altbestände ohne activeTrades-Feld migrieren.
+  // Ein absichtlich leerer Trading Desk darf niemals aus data.plan wiederbelebt werden.
+  if(!hasActiveTradesField&&data.plan&&data.plan.createdAt){
+    const migrated={...tradeTemplate,...data.plan,id:data.plan.id||uid(),createdAt:data.plan.createdAt||new Date().toISOString(),updatedAt:data.plan.updatedAt||new Date().toISOString()};
+    migrated.originalPlan=migrated.originalPlan||planSnapshot(migrated);
+    s.activeTrades=[migrated];
+  }
+
+  if(s.activeTrades.length>0){
+    s.activeTrades=s.activeTrades.map(t=>{
+      const n={...tradeTemplate,...t,id:t.id||uid()};
+      n.originalPlan=n.originalPlan||planSnapshot(n);
+      if(!Array.isArray(n.deviations))n.deviations=[];
+      return n;
+    });
+    s.plan=s.activeTrades[0];
+  }else{
+    s.plan={...tradeTemplate};
+  }
+  return s;
+}
 function currentTrade(){return (state.activeTrades||[]).find(t=>t.id===selectedTradeId)||null}
 function isCreateScreenActive(){return $('create')?.classList.contains('active')}
 function collectFormDraft(){
@@ -535,9 +586,48 @@ async function savePlan(){
     setTimeout(async()=>{await fetchYahoo(); selectedTradeId=oldSelected; renderAll();},500);
   }
 }
-async function fetchMarketDataForTrade(p,{silent=false}={}){if(!p||!p.symbol||p.symbol==='CUSTOM')return false;for(const provider of yahooUrls(p.symbol)){try{const res=await withTimeout(provider.url);if(!res.ok)throw new Error(`HTTP ${res.status}`);const quote=parseYahoo(await res.json());applyLivePrice(p,quote,provider.name);if(!silent&&currentTrade()?.id===p.id)$('liveMsg').textContent=`Live-Kurs aktualisiert · ${provider.name} · ${new Date().toLocaleTimeString('de-DE')}`;return true}catch(e){console.warn('Market provider failed',provider.name,e.message)}}if(!silent&&currentTrade()?.id===p.id)$('liveMsg').textContent='Live-Daten konnten nicht geladen werden. Atlas versucht es automatisch erneut.';return false}
+async function fetchMarketDataForTrade(p,{silent=false}={}){
+  if(!p||!p.symbol||p.symbol==='CUSTOM')return false;
+  const providers=yahooUrls(p.symbol);
+  try{
+    const winner=await Promise.any(providers.map(async provider=>{
+      const res=await withTimeout(provider.url,7000);
+      if(!res.ok)throw new Error(`HTTP ${res.status}`);
+      const quote=parseYahoo(await res.json());
+      return{provider,quote};
+    }));
+    applyLivePrice(p,winner.quote,winner.provider.name);
+    if(!silent&&currentTrade()?.id===p.id)$('liveMsg').textContent=`Live-Kurs aktualisiert · ${winner.provider.name} · ${new Date().toLocaleTimeString('de-DE')}`;
+    return true;
+  }catch(error){
+    console.warn('All market providers failed',p.symbol,error);
+    if(!silent&&currentTrade()?.id===p.id)$('liveMsg').textContent='Live-Daten konnten nicht geladen werden. Atlas versucht es automatisch erneut.';
+    return false;
+  }
+}
 async function fetchYahoo(){const p=currentTrade();if(!p)return;$('liveMsg').textContent='Live-Kurs wird geladen...';setDataPill('Marktdaten laden','warn');const ok=await fetchMarketDataForTrade(p);setDataPill(ok?'Marktdaten live':'Marktdaten gestört',ok?'ok':'error');renderAll();if(ok)scheduleSave()}
-async function refreshAllMarketData(){if(marketBusy||!user||document.hidden)return;marketBusy=true;setDataPill('Marktdaten laden','warn');let ok=0,failed=0;const trades=[...(state.activeTrades||[])];for(const trade of trades){if(!(state.activeTrades||[]).some(t=>t.id===trade.id))continue;const success=await fetchMarketDataForTrade(trade,{silent:true});success?ok++:failed++}renderAll();if(ok)scheduleSave();setDataPill(failed&&ok?`${ok} live · ${failed} offen`:failed?'Marktdaten gestört':`${ok} Trade${ok===1?'':'s'} live`,failed?'error':'ok');marketBusy=false}
+async function refreshAllMarketData(){
+  if(marketBusy||!user||document.hidden)return;
+  marketBusy=true;
+  setDataPill('Marktdaten laden','warn');
+  try{
+    let ok=0,failed=0;
+    const trades=[...(state.activeTrades||[])];
+    for(const trade of trades){
+      if(!(state.activeTrades||[]).some(t=>t.id===trade.id))continue;
+      const success=await fetchMarketDataForTrade(trade,{silent:true});
+      success?ok++:failed++;
+    }
+    renderAll();
+    if(ok)scheduleSave();
+    setDataPill(failed&&ok?`${ok} live · ${failed} offen`:failed?'Marktdaten gestört':`${ok} Trade${ok===1?'':'s'} live`,failed?'error':'ok');
+  }catch(error){
+    console.error('Market refresh failed',error);
+    setDataPill('Marktdaten gestört','error');
+  }finally{
+    marketBusy=false;
+  }
+}
 function startMarketEngine(){stopMarketEngine();setTimeout(refreshAllMarketData,1200);marketTimer=setInterval(refreshAllMarketData,MARKET_REFRESH_MS)}
 function stopMarketEngine(){if(marketTimer)clearInterval(marketTimer);marketTimer=null;marketBusy=false}
 function renderTrades(){const arr=state.trades||[];$('tradeList').innerHTML=arr.map((t,i)=>{const pnl=tradePnlEuro(t);return `<div class="tradeRow"><div><b>${t.date} · ${t.market}</b><br>${t.direction} · ${t.closeType||'Abschluss'}${t.planDeviation?' · Planabweichung':''}${(t.deviations||[]).length?' · '+t.deviations.length+' dokumentierte Änderung(en)':''} · ${t.note||''}<br><small>Entry ${fmt(t.entry)} · Exit ${fmt(t.exit)} · ${t.result||0}P · ${t.contracts||1} Kontrakt(e) · ${euroShort(t.pointValue||1)}/P</small></div><div class="${pnl>=0?'plus':'minus'}">${euroShort(pnl)}</div><button data-deltrade="${i}">Löschen</button></div>`}).join('')||'<p>Noch keine beendeten Trades.</p>';document.querySelectorAll('[data-deltrade]').forEach(b=>b.addEventListener('click',()=>{state.trades.splice(Number(b.dataset.deltrade),1);renderTrades();renderChallenge();scheduleSave()}))}
