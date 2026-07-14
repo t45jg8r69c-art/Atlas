@@ -878,3 +878,17 @@ body{
     border-radius:18px!important;
   }
 }
+
+
+/* V5.8.9 – Clean Nautilus App Icon / kein doppelter Innenrahmen */
+.logo.atlasOfficialMark{
+  background:transparent!important;
+  box-shadow:none!important;
+  overflow:hidden!important;
+}
+.logo.atlasOfficialMark img{
+  width:100%!important;
+  height:100%!important;
+  object-fit:cover!important;
+  transform:scale(1.015);
+}
