@@ -899,3 +899,16 @@ body{
   transform:none!important;
   object-fit:cover!important;
 }
+
+
+/* V5.8.9 – Final Homescreen Icon */
+.logo.atlasOfficialMark{
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.logo.atlasOfficialMark img{
+  width:100%!important;
+  height:100%!important;
+  object-fit:cover!important;
+  transform:none!important;
+}
