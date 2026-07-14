@@ -250,3 +250,175 @@ button.dangerBtn:hover{
   .detailActions{grid-template-columns:1fr}
   .detailActions .dangerBtn{grid-column:auto}
 }
+
+
+/* V5.8.7 Premium Desk – visible redesign + cache-busted */
+#plan .topline{
+  max-width:1120px;
+  margin:0 auto 28px;
+  padding:2px 4px;
+}
+#plan .topline h1{
+  font-size:42px;
+  letter-spacing:-.035em;
+  margin-bottom:0;
+}
+#plan .statusCluster{
+  gap:10px;
+}
+#plan .statusPill{
+  background:rgba(12,27,46,.78);
+  border-color:#3d5879;
+  padding:9px 14px;
+  font-size:12px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
+}
+.planStack{max-width:1120px!important}
+.deskCard{
+  border-radius:26px!important;
+  padding:30px 28px 28px!important;
+  background:
+    radial-gradient(circle at 86% 0%,rgba(217,189,106,.075),transparent 28%),
+    linear-gradient(180deg,#1a304b 0%,#14263d 100%)!important;
+  border:1px solid #506d95!important;
+  box-shadow:0 28px 70px rgba(0,0,0,.24)!important;
+}
+.deskHeader{
+  margin-bottom:28px!important;
+  align-items:flex-start!important;
+}
+.deskHeader .label{color:#8fb9ef}
+.deskHeader h1{
+  font-size:38px!important;
+  line-height:1.05;
+  margin:0!important;
+}
+.deskHeader p{
+  max-width:610px;
+  margin:16px 0 0!important;
+  color:#c8d8ee!important;
+  font-size:15px;
+}
+.deskNewBtn{
+  min-width:190px!important;
+  min-height:52px;
+  border-radius:16px!important;
+  font-size:16px!important;
+  background:linear-gradient(180deg,#f0d475,#d1aa48)!important;
+  box-shadow:0 10px 28px rgba(0,0,0,.2)!important;
+}
+.activeTradeList{gap:14px!important}
+.activeTradeCard{
+  min-height:82px!important;
+  padding:16px 18px!important;
+  border-radius:18px!important;
+  background:linear-gradient(180deg,#1d3552,#182d47)!important;
+  border:1px solid #49678f!important;
+  grid-template-columns:14px minmax(0,1fr) 150px 180px!important;
+  box-shadow:0 8px 22px rgba(0,0,0,.10),inset 0 1px 0 rgba(255,255,255,.025)!important;
+}
+.activeTradeCard:hover{
+  transform:none!important;
+  border-color:#718aad!important;
+}
+.activeTradeCard>div:nth-child(2) b{
+  font-size:22px!important;
+  margin-bottom:4px;
+}
+.miniLamp{
+  width:10px!important;
+  height:46px!important;
+  box-shadow:none!important;
+}
+.deskMeta{
+  padding:0 18px 0 8px!important;
+  border-right:1px solid #425f84;
+}
+.deskMeta strong{
+  font-size:15px!important;
+  line-height:1.2;
+}
+.deskMeta span{margin-top:6px!important}
+.tradeLiveState{
+  border-left:0!important;
+  padding-left:18px!important;
+  min-width:180px!important;
+  gap:11px!important;
+}
+.tradeLiveState i{
+  width:10px!important;
+  height:10px!important;
+  flex:0 0 10px!important;
+  box-shadow:none!important;
+}
+.tradeLiveState b{
+  font-size:14px!important;
+  line-height:1.1;
+}
+.tradeLiveState span{
+  margin-top:5px!important;
+  font-size:11px!important;
+}
+.tradeDetail{
+  margin-top:20px;
+}
+.detailActions{
+  display:grid!important;
+  grid-template-columns:1fr 1fr auto!important;
+  gap:12px!important;
+  align-items:stretch;
+  margin:0 0 18px!important;
+}
+.detailActions button{
+  width:auto!important;
+  min-height:52px;
+  border-radius:15px!important;
+}
+.detailActions .dangerBtn{
+  grid-column:auto!important;
+  min-width:185px;
+  padding:12px 18px;
+  border:1px solid rgba(224,113,113,.45)!important;
+  background:rgba(93,33,44,.34)!important;
+  color:#f2b8bf!important;
+  font-weight:800;
+  cursor:pointer;
+}
+.detailActions .dangerBtn:hover{
+  background:rgba(118,42,55,.48)!important;
+  color:#ffd6dc!important;
+}
+#tradeDetail>.card{
+  border-radius:24px;
+}
+
+@media(max-width:820px){
+  #plan .topline h1{font-size:34px}
+  .deskCard{padding:20px 16px 18px!important;border-radius:22px!important}
+  .deskHeader h1{font-size:31px!important}
+  .activeTradeCard{
+    grid-template-columns:10px minmax(0,1fr)!important;
+    min-height:0!important;
+    padding:15px!important;
+  }
+  .deskMeta{
+    grid-column:2!important;
+    border-right:0!important;
+    border-top:1px solid #405d80;
+    padding:10px 0 0!important;
+    text-align:left!important;
+  }
+  .tradeLiveState{
+    grid-column:2!important;
+    min-width:0!important;
+    padding:10px 0 0!important;
+    border-top:1px solid #405d80!important;
+  }
+  .detailActions{
+    grid-template-columns:1fr 1fr!important;
+  }
+  .detailActions .dangerBtn{
+    grid-column:1/-1!important;
+    min-width:0;
+  }
+}
