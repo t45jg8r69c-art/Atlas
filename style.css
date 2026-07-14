@@ -85,3 +85,25 @@ button:disabled{opacity:.55;cursor:not-allowed}
 
 /* Sprint 5.8.7 – robuste Screenshot-Verarbeitung */
 .uploadBox input[type="file"]{display:block;width:100%}
+
+/* V5.8.7 – Live-Status pro Trade im Trading Desk */
+.activeTradeCard{grid-template-columns:18px minmax(0,1fr) auto auto}
+.tradeLiveState{min-width:128px;display:flex;align-items:center;justify-content:flex-end;gap:9px;text-align:left;padding-left:14px;border-left:1px solid #38506d}
+.tradeLiveState i{width:12px;height:12px;border-radius:50%;flex:0 0 12px;background:var(--red);box-shadow:0 0 12px rgba(224,113,113,.45)}
+.tradeLiveState b{font-size:14px!important;line-height:1.1}
+.tradeLiveState span{font-size:11px!important;margin-top:3px!important;white-space:nowrap}
+.tradeLiveState.live i{background:var(--green);box-shadow:0 0 12px rgba(114,215,155,.5)}
+.tradeLiveState.live b{color:var(--green)}
+.tradeLiveState.loading i,.tradeLiveState.stale i{background:var(--orange);box-shadow:0 0 12px rgba(230,169,93,.5)}
+.tradeLiveState.loading b,.tradeLiveState.stale b{color:var(--orange)}
+.tradeLiveState.loading i{animation:brainPulse 1.4s ease-in-out infinite}
+.tradeLiveState.error b{color:var(--red)}
+.tradeLiveState.none{opacity:.75}
+.tradeLiveState.none i{background:#71839c;box-shadow:none}
+.tradeLiveState.none b{color:#c7d7ee}
+@media(max-width:820px){
+  .activeTradeCard{grid-template-columns:14px minmax(0,1fr) auto}
+  .deskMeta{grid-column:2;text-align:left}
+  .tradeLiveState{grid-column:3;grid-row:1 / span 2;min-width:94px;padding-left:10px;align-self:stretch}
+  .tradeLiveState span{white-space:normal}
+}

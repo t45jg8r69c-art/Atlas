@@ -460,7 +460,17 @@ function editSelectedTrade(){
 }
 async function selectTrade(id){selectedTradeId=id;renderPlan();scrollTo(0,0);const p=currentTrade();if(!p||!p.symbol||p.symbol==='CUSTOM')return;if($('liveMsg'))$('liveMsg').textContent='Live-Kurs wird für diesen Trade geladen...';const ok=await fetchMarketDataForTrade(p);renderAll();if(ok){scheduleSave();setDataPill('Marktdaten live','ok')}else setDataPill('Marktdaten gestört','error')}
 function renderDesk(){const arr=state.activeTrades||[];$('activeTradeList').innerHTML=arr.map(t=>tradeDeskCard(t)).join('')||`<div class="emptyDesk"><h2>Noch kein aktiver Trade</h2><p>Lege deinen ersten Trade an. Atlas zeigt dir danach nur eine ruhige Übersicht und öffnet Details erst auf Klick.</p></div>`;document.querySelectorAll('[data-selecttrade]').forEach(b=>b.addEventListener('click',()=>selectTrade(b.dataset.selecttrade)));if($('tradeDetail'))$('tradeDetail').classList.toggle('hidden',!currentTrade())}
-function tradeDeskCard(t){const current=num(t.current)||num(t.entry);const s=tradeState(t,current);const close=brokerCloseStatus(t,current);const lampClass=close.mode==='stop'||s.key==='stop_approaching'?'red':(close.mode==='target'||s.key==='target_approaching'||s.key==='entry_approaching'?'yellow':'');const side=t.direction==='Long'?'Kaufen':'Verkaufen';const focus=deskFocus(t,current,s);return `<button class="activeTradeCard" data-state="${s.key}" data-selecttrade="${t.id}"><div class="miniLamp ${lampClass}"></div><div><b>${t.market}</b><span>${side} · ${fmt(t.contracts)} Kontrakt(e)</span></div><div class="deskMeta"><strong>${s.phase}</strong><span>${focus}</span></div></button>`}
+function tradeLiveStatus(t){
+  if(!t||!t.symbol||t.symbol==='CUSTOM')return{key:'none',label:'Keine Live-Daten',detail:'Benutzerdefinierter Markt'};
+  if(t.liveStatus==='loading')return{key:'loading',label:'Wird aktualisiert',detail:'Kursabfrage läuft'};
+  if(t.liveStatus==='error')return{key:'error',label:'Nicht live',detail:'Letzte Abfrage fehlgeschlagen'};
+  if(!t.liveUpdatedAt)return{key:'error',label:'Nicht live',detail:'Noch kein Live-Kurs'};
+  const age=Math.max(0,Date.now()-new Date(t.liveUpdatedAt).getTime());
+  if(!Number.isFinite(age))return{key:'error',label:'Nicht live',detail:'Zeitstempel ungültig'};
+  if(age<=MARKET_REFRESH_MS*2.5)return{key:'live',label:'Live',detail:`vor ${Math.max(0,Math.round(age/1000))} Sek.`};
+  return{key:'stale',label:'Veraltet',detail:`vor ${Math.max(1,Math.round(age/60000))} Min.`};
+}
+function tradeDeskCard(t){const current=num(t.current)||num(t.entry);const s=tradeState(t,current);const close=brokerCloseStatus(t,current);const lampClass=close.mode==='stop'||s.key==='stop_approaching'?'red':(close.mode==='target'||s.key==='target_approaching'||s.key==='entry_approaching'?'yellow':'');const side=t.direction==='Long'?'Kaufen':'Verkaufen';const focus=deskFocus(t,current,s);const live=tradeLiveStatus(t);return `<button class="activeTradeCard" data-state="${s.key}" data-selecttrade="${t.id}"><div class="miniLamp ${lampClass}" title="Trade-Status"></div><div><b>${t.market}</b><span>${side} · ${fmt(t.contracts)} Kontrakt(e)</span></div><div class="deskMeta"><strong>${s.phase}</strong><span>${focus}</span></div><div class="tradeLiveState ${live.key}"><i></i><div><b>${live.label}</b><span>${live.detail}</span></div></div></button>`}
 function deskFocus(p,current,s){if((p.positionStatus||'active')!=='active')return `${fmt(dist(current,p.entry))}P bis Einstieg`;if(s.key==='stop_hit')return 'Stop erreicht';if(s.key==='target_hit')return 'TP erreicht';if(s.key==='stop_approaching')return `${fmt(dist(current,p.stop))}P bis SL`;return `${fmt(dist(p.target,current))}P bis TP`}
 function loadForm(source=null){const p=source||((isCreateScreenActive()&&formDraft)?formDraft:(currentTrade()||state.plan||blankTrade()));$('formTitle').textContent=formMode==='edit'?'Trade bearbeiten':'Trade anlegen';$('btnSavePlan').textContent=formMode==='edit'?'Trade aktualisieren':'Neuen Trade speichern';$('fMarketSelect').innerHTML=markets.map(m=>`<option value="${m[0]}">${m[1]}</option>`).join('');$('fMarketSelect').value=markets.some(m=>m[0]===p.symbol)?p.symbol:'CUSTOM';$('fMarket').value=p.market;$('fSymbol').value=p.symbol;$('fDirection').value=p.direction;$('fPositionStatus').value=p.positionStatus||'active';$('fContracts').value=p.contracts;$('fPointValue').value=p.pointValue;$('fEntry').value=p.entry;$('fTarget').value=p.target;$('fStop').value=p.stop;$('fZone').value=p.zone;$('fWhy').value=p.why;$('fRule').value=p.rule;$('hkcmPreview').innerHTML=imgHtml(p.hkcm);$('tvPreview').innerHTML=imgHtml(p.tv);if($('accountStart'))$('accountStart').value=state.settings.accountStart||'';setTimeout(renderDeviationPanel,0)}
 function renderPlan(){renderDesk();const p=currentTrade();if(!p){$('tradeDetail').classList.add('hidden');return}$('tradeDetail').classList.remove('hidden');const current=num(p.current)||num(p.entry);$('marketTitle').textContent=`${p.market} · ${p.direction==='Long'?'Kaufen / Long':'Verkaufen / Short'}`;$('directionLine').textContent=`${p.contracts} Kontrakt(e) · ${p.symbol}`;$('sStop').textContent=fmt(p.stop);$('sEntry').textContent=fmt(p.entry);$('sTarget').textContent=fmt(p.target);$('whyList').innerHTML=String(p.why||'').split('\n').filter(Boolean).map(x=>`<div class="pill">✓ ${x}</div>`).join('')||'<p>Keine Analyse hinterlegt.</p>';$('bar').style.width=progressPct(p,current)+'%';$('hkcmView').innerHTML=imgHtml(p.hkcm);$('tvView').innerHTML=imgHtml(p.tv);const k=tradeState(p,current);const mentor=mentorFor(p,k);renderBrain(p,current,k,mentor);renderBrokerCard(p,current,k);renderClosePanel(p,current);renderDeviationInfo(p);const last=lastLiveById[p.id]||(p.liveUpdatedAt?{price:current,change:Number(p.liveChange),source:p.dataSource,at:p.liveUpdatedAt}:null);if(last){$('livePrice').textContent=fmt(last.price);$('liveChange').textContent=Number.isFinite(Number(last.change))?((Number(last.change)>=0?'+':'')+fmt(last.change)+'%'):'-';if($('liveMsg'))$('liveMsg').textContent=`Live-Kurs aktualisiert${last.source?' · '+last.source:''}${last.at?' · '+new Date(last.at).toLocaleTimeString('de-DE'):''}`}else{$('livePrice').textContent=fmt(current);$('liveChange').textContent='-';if($('liveMsg'))$('liveMsg').textContent='Live-Daten werden automatisch geladen.'}}
@@ -665,6 +675,9 @@ async function savePlan(){
 }
 async function fetchMarketDataForTrade(p,{silent=false}={}){
   if(!p||!p.symbol||p.symbol==='CUSTOM')return false;
+  p.liveStatus='loading';
+  p.liveErrorAt=null;
+  renderDesk();
   const providers=yahooUrls(p.symbol);
   try{
     const winner=await Promise.any(providers.map(async provider=>{
@@ -674,12 +687,18 @@ async function fetchMarketDataForTrade(p,{silent=false}={}){
       return{provider,quote};
     }));
     applyLivePrice(p,winner.quote,winner.provider.name);
+    p.liveStatus='live';
+    p.liveErrorAt=null;
     if(!silent&&currentTrade()?.id===p.id)$('liveMsg').textContent=`Live-Kurs aktualisiert · ${winner.provider.name} · ${new Date().toLocaleTimeString('de-DE')}`;
     return true;
   }catch(error){
     console.warn('All market providers failed',p.symbol,error);
+    p.liveStatus='error';
+    p.liveErrorAt=new Date().toISOString();
     if(!silent&&currentTrade()?.id===p.id)$('liveMsg').textContent='Live-Daten konnten nicht geladen werden. Atlas versucht es automatisch erneut.';
     return false;
+  }finally{
+    renderDesk();
   }
 }
 async function fetchYahoo(){const p=currentTrade();if(!p)return;$('liveMsg').textContent='Live-Kurs wird geladen...';setDataPill('Marktdaten laden','warn');const ok=await fetchMarketDataForTrade(p);setDataPill(ok?'Marktdaten live':'Marktdaten gestört',ok?'ok':'error');renderAll();if(ok)scheduleSave()}
