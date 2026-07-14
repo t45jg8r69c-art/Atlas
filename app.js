@@ -7,6 +7,9 @@ const CHALLENGE_BOXES=50;
 const CHALLENGE_TARGET=CHALLENGE_BOX_VALUE*CHALLENGE_BOXES;
 const MARKET_REFRESH_MS=30000;
 const MARKET_TIMEOUT_MS=9000;
+const LIVE_FRESH_MS=120000;
+const LIVE_STALE_MS=600000;
+const LIVE_ERROR_THRESHOLD=3;
 const tradeTemplate={market:'Dow Jones Future',symbol:'YM=F',direction:'Long',positionStatus:'active',contracts:1,pointValue:1,entry:52900,target:54045,stop:52380,current:52988,previousPrice:null,lastPrice:null,liveUpdatedAt:null,dataSource:null,entryTriggerSide:null,entryTriggeredAt:null,brainState:'waiting',mentorState:null,originalPlan:null,deviations:[],zone:53500,why:'Laufende blaue Welle (v)\nEinstieg auf relevantem Fib-Niveau der Subwelle (ii)',rule:'Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.',hkcm:'',tv:'',createdAt:null,updatedAt:null};
 const defaultState={
   plan:{...tradeTemplate},
@@ -317,7 +320,13 @@ function show(id){
   if(id==='create'){if(!formDraft){formMode='new';formDraft=emptyTradeDraft();formDirty=false;clearFileInputs()}loadForm(formDraft);}
   scrollTo(0,0);
 }
-function cloudMsg(t){$('cloudState').textContent=t;$('syncPill').textContent=t}
+function cloudMsg(t){
+  if($('cloudState'))$('cloudState').textContent=t;
+  if($('syncPill')){
+    const quiet=t==='Speichert...'?'Cloud':t==='Cloud wird geladen...'?'Cloud lädt':t==='Cloud verbunden'?'Cloud':t;
+    $('syncPill').textContent=quiet;
+  }
+}
 function stateRef(){return atlasFirebase.db.collection('users').doc(user.uid).collection('atlas').doc('state')}
 function scheduleSave(){
   if(!user||!cloudReady)return;
@@ -458,17 +467,20 @@ function editSelectedTrade(){
   loadForm(formDraft);
   show('create');
 }
-async function selectTrade(id){selectedTradeId=id;renderPlan();scrollTo(0,0);const p=currentTrade();if(!p||!p.symbol||p.symbol==='CUSTOM')return;if($('liveMsg'))$('liveMsg').textContent='Live-Kurs wird für diesen Trade geladen...';const ok=await fetchMarketDataForTrade(p);renderAll();if(ok){scheduleSave();setDataPill('Marktdaten live','ok')}else setDataPill('Marktdaten gestört','error')}
+async function selectTrade(id){selectedTradeId=id;renderPlan();scrollTo(0,0);const p=currentTrade();if(!p||!p.symbol||p.symbol==='CUSTOM')return;if($('liveMsg'))$('liveMsg').textContent='Letzter gespeicherter Live-Kurs wird angezeigt. Aktualisierung läuft im Hintergrund.';const ok=await fetchMarketDataForTrade(p,{silent:true});renderAll();if(ok)scheduleSave();updateGlobalMarketPill()}
 function renderDesk(){const arr=state.activeTrades||[];$('activeTradeList').innerHTML=arr.map(t=>tradeDeskCard(t)).join('')||`<div class="emptyDesk"><h2>Noch kein aktiver Trade</h2><p>Lege deinen ersten Trade an. Atlas zeigt dir danach nur eine ruhige Übersicht und öffnet Details erst auf Klick.</p></div>`;document.querySelectorAll('[data-selecttrade]').forEach(b=>b.addEventListener('click',()=>selectTrade(b.dataset.selecttrade)));if($('tradeDetail'))$('tradeDetail').classList.toggle('hidden',!currentTrade())}
 function tradeLiveStatus(t){
-  if(!t||!t.symbol||t.symbol==='CUSTOM')return{key:'none',label:'Keine Live-Daten',detail:'Benutzerdefinierter Markt'};
-  if(t.liveStatus==='loading')return{key:'loading',label:'Wird aktualisiert',detail:'Kursabfrage läuft'};
-  if(t.liveStatus==='error')return{key:'error',label:'Nicht live',detail:'Letzte Abfrage fehlgeschlagen'};
-  if(!t.liveUpdatedAt)return{key:'error',label:'Nicht live',detail:'Noch kein Live-Kurs'};
+  if(!t||!t.symbol||t.symbol==='CUSTOM')return{key:'none',label:'Manuell',detail:'Keine Live-Daten'};
+  if(!t.liveUpdatedAt){
+    if((t.liveErrorCount||0)>=LIVE_ERROR_THRESHOLD)return{key:'error',label:'Keine Daten',detail:'Verbindung prüfen'};
+    return{key:'stale',label:'Noch offen',detail:'Warte auf ersten Kurs'};
+  }
   const age=Math.max(0,Date.now()-new Date(t.liveUpdatedAt).getTime());
-  if(!Number.isFinite(age))return{key:'error',label:'Nicht live',detail:'Zeitstempel ungültig'};
-  if(age<=MARKET_REFRESH_MS*2.5)return{key:'live',label:'Live',detail:`vor ${Math.max(0,Math.round(age/1000))} Sek.`};
-  return{key:'stale',label:'Veraltet',detail:`vor ${Math.max(1,Math.round(age/60000))} Min.`};
+  if(!Number.isFinite(age))return{key:'stale',label:'Veraltet',detail:'Zeit unbekannt'};
+  if(age<=LIVE_FRESH_MS)return{key:'live',label:'Aktuell',detail:`${Math.max(0,Math.round(age/60_000))} Min. alt`};
+  if(age<=LIVE_STALE_MS)return{key:'stale',label:'Veraltet',detail:`${Math.max(1,Math.round(age/60_000))} Min. alt`};
+  if((t.liveErrorCount||0)>=LIVE_ERROR_THRESHOLD)return{key:'error',label:'Keine Daten',detail:`seit ${Math.max(1,Math.round(age/60_000))} Min.`};
+  return{key:'stale',label:'Veraltet',detail:`${Math.max(1,Math.round(age/60_000))} Min. alt`};
 }
 function tradeDeskCard(t){const current=num(t.current)||num(t.entry);const s=tradeState(t,current);const close=brokerCloseStatus(t,current);const lampClass=close.mode==='stop'||s.key==='stop_approaching'?'red':(close.mode==='target'||s.key==='target_approaching'||s.key==='entry_approaching'?'yellow':'');const side=t.direction==='Long'?'Kaufen':'Verkaufen';const focus=deskFocus(t,current,s);const live=tradeLiveStatus(t);return `<button class="activeTradeCard" data-state="${s.key}" data-selecttrade="${t.id}"><div class="miniLamp ${lampClass}" title="Trade-Status"></div><div><b>${t.market}</b><span>${side} · ${fmt(t.contracts)} Kontrakt(e)</span></div><div class="deskMeta"><strong>${s.phase}</strong><span>${focus}</span></div><div class="tradeLiveState ${live.key}"><i></i><div><b>${live.label}</b><span>${live.detail}</span></div></div></button>`}
 function deskFocus(p,current,s){if((p.positionStatus||'active')!=='active')return `${fmt(dist(current,p.entry))}P bis Einstieg`;if(s.key==='stop_hit')return 'Stop erreicht';if(s.key==='target_hit')return 'TP erreicht';if(s.key==='stop_approaching')return `${fmt(dist(current,p.stop))}P bis SL`;return `${fmt(dist(p.target,current))}P bis TP`}
@@ -688,12 +700,14 @@ async function fetchMarketDataForTrade(p,{silent=false}={}){
     }));
     applyLivePrice(p,winner.quote,winner.provider.name);
     p.liveStatus='live';
+    p.liveErrorCount=0;
     p.liveErrorAt=null;
     if(!silent&&currentTrade()?.id===p.id)$('liveMsg').textContent=`Live-Kurs aktualisiert · ${winner.provider.name} · ${new Date().toLocaleTimeString('de-DE')}`;
     return true;
   }catch(error){
     console.warn('All market providers failed',p.symbol,error);
-    p.liveStatus='error';
+    p.liveErrorCount=(Number(p.liveErrorCount)||0)+1;
+    p.liveStatus=p.liveUpdatedAt?'live':'pending';
     p.liveErrorAt=new Date().toISOString();
     if(!silent&&currentTrade()?.id===p.id)$('liveMsg').textContent='Live-Daten konnten nicht geladen werden. Atlas versucht es automatisch erneut.';
     return false;
@@ -701,11 +715,22 @@ async function fetchMarketDataForTrade(p,{silent=false}={}){
     renderDesk();
   }
 }
-async function fetchYahoo(){const p=currentTrade();if(!p)return;$('liveMsg').textContent='Live-Kurs wird geladen...';setDataPill('Marktdaten laden','warn');const ok=await fetchMarketDataForTrade(p);setDataPill(ok?'Marktdaten live':'Marktdaten gestört',ok?'ok':'error');renderAll();if(ok)scheduleSave()}
+async function fetchYahoo(){const p=currentTrade();if(!p)return;$('liveMsg').textContent='Live-Kurs wird geladen...';updateGlobalMarketPill();const ok=await fetchMarketDataForTrade(p);setDataPill(ok?'Marktdaten live':'Marktdaten gestört',ok?'ok':'error');renderAll();if(ok)scheduleSave()}
+function updateGlobalMarketPill(){
+  const trades=(state.activeTrades||[]).filter(t=>t.symbol&&t.symbol!=='CUSTOM');
+  if(!trades.length){setDataPill('Keine Live-Märkte','');return}
+  const statuses=trades.map(tradeLiveStatus);
+  const fresh=statuses.filter(x=>x.key==='live').length;
+  const problems=statuses.filter(x=>x.key==='error').length;
+  if(problems>0)setDataPill(`${problems} Datenproblem${problems===1?'':'e'}`,'error');
+  else if(fresh===trades.length)setDataPill('Marktdaten aktuell','ok');
+  else setDataPill('Marktdaten aktiv','warn');
+}
+
 async function refreshAllMarketData(){
   if(marketBusy||!user||!cloudReady||document.hidden)return;
   marketBusy=true;
-  setDataPill('Marktdaten laden','warn');
+  updateGlobalMarketPill();
   try{
     let ok=0,failed=0;
     const trades=[...(state.activeTrades||[])];
@@ -719,12 +744,12 @@ async function refreshAllMarketData(){
     setDataPill(failed&&ok?`${ok} live · ${failed} offen`:failed?'Marktdaten gestört':`${ok} Trade${ok===1?'':'s'} live`,failed?'error':'ok');
   }catch(error){
     console.error('Market refresh failed',error);
-    setDataPill('Marktdaten gestört','error');
+    updateGlobalMarketPill();
   }finally{
     marketBusy=false;
   }
 }
-function startMarketEngine(){if(!cloudReady)return;stopMarketEngine();setTimeout(refreshAllMarketData,1200);marketTimer=setInterval(refreshAllMarketData,MARKET_REFRESH_MS)}
+function startMarketEngine(){if(!cloudReady)return;stopMarketEngine();updateGlobalMarketPill();setTimeout(refreshAllMarketData,1200);marketTimer=setInterval(refreshAllMarketData,MARKET_REFRESH_MS)}
 function stopMarketEngine(){if(marketTimer)clearInterval(marketTimer);marketTimer=null;marketBusy=false}
 function renderTrades(){const arr=state.trades||[];$('tradeList').innerHTML=arr.map((t,i)=>{const pnl=tradePnlEuro(t);return `<div class="tradeRow"><div><b>${t.date} · ${t.market}</b><br>${t.direction} · ${t.closeType||'Abschluss'}${t.planDeviation?' · Planabweichung':''}${(t.deviations||[]).length?' · '+t.deviations.length+' dokumentierte Änderung(en)':''} · ${t.note||''}<br><small>Entry ${fmt(t.entry)} · Exit ${fmt(t.exit)} · ${t.result||0}P · ${t.contracts||1} Kontrakt(e) · ${euroShort(t.pointValue||1)}/P</small></div><div class="${pnl>=0?'plus':'minus'}">${euroShort(pnl)}</div><button data-deltrade="${i}">Löschen</button></div>`}).join('')||'<p>Noch keine beendeten Trades.</p>';document.querySelectorAll('[data-deltrade]').forEach(b=>b.addEventListener('click',()=>{state.trades.splice(Number(b.dataset.deltrade),1);renderTrades();renderChallenge();scheduleSave()}))}
 function brokerCloseStatus(p,current){if((p.positionStatus||'active')!=='active')return{mode:'pending',label:'Order geplant',exit:current,deviation:false};const dir=p.direction==='Long'?1:-1;const targetHit=dir===1?current>=num(p.target):current<=num(p.target);const stopHit=dir===1?current<=num(p.stop):current>=num(p.stop);if(targetHit)return{mode:'target',label:'Take-Profit erreicht',exit:num(p.target),deviation:false};if(stopHit)return{mode:'stop',label:'Stop-Loss erreicht',exit:num(p.stop),deviation:false};return{mode:'manual',label:'Trade läuft noch',exit:current,deviation:false}}
@@ -732,16 +757,37 @@ function selectedCloseStatus(){const p=currentTrade();if(!p)return{mode:'manual'
 function closePreview(){const p=currentTrade();if(!p)return{points:0,pnl:0};const status=selectedCloseStatus();const dir=p.direction==='Long'?1:-1;const points=(num(status.exit)-num(p.entry))*dir;const contracts=num(p.contracts)||1;const pointValue=num(p.pointValue)||1;const pnl=Math.round(points*contracts*pointValue);return{...status,points,pnl,contracts,pointValue}}
 function renderClosePanel(p,current){if(!$('closeInfo'))return;const auto=brokerCloseStatus(p,current);const mode=$('closeMode')?.value||'auto';if(auto.mode==='pending')$('closeInfo').textContent='Die Order ist noch nicht als aktive Position markiert. Stelle den Status in der Eingabe auf „Position aktiv“, sobald der Einstieg ausgeführt wurde.';else $('closeInfo').textContent=auto.mode==='target'?'Take-Profit wurde erreicht. Atlas übernimmt den Zielkurs automatisch ins Journal.':auto.mode==='stop'?'Stop-Loss wurde erreicht. Atlas übernimmt den Stopkurs automatisch ins Journal.':'Position läuft. Bei manuellem Abbruch bitte Schlusskurs und Grund dokumentieren.';if($('closePrice')){const needsManualPrice=mode==='manual'||(mode==='auto'&&auto.mode==='manual');$('closePrice').classList.toggle('hidden',!needsManualPrice);if(!needsManualPrice)$('closePrice').value=''}const prev=closePreview();$('closeCalc').textContent=auto.mode==='pending'?'Kein Abschluss möglich, solange die Order nur geplant ist.':`Vorschau: ${prev.label} · Exit ${fmt(prev.exit)} · ${pts(Math.round(prev.points))} · ${euroShort(prev.pnl)}`;if($('btnCloseTrade')){$('btnCloseTrade').disabled=auto.mode==='pending'&&mode==='auto';$('btnCloseTrade').textContent=auto.mode==='target'?'Take-Profit ins Journal übernehmen':auto.mode==='stop'?'Stop-Loss ins Journal übernehmen':'Trade gemäß Broker-Logik ins Journal übernehmen'}}
 function closeTrade(){const p=currentTrade();if(!p)return;if((p.positionStatus||'active')!=='active'&&($('closeMode')?.value||'auto')==='auto'){$('closeCalc').textContent='Diese Order ist noch nicht aktiv. Bitte zuerst in der Eingabe auf Position aktiv stellen oder manuell schließen.';return}const prev=closePreview();if(prev.mode==='manual'&&!String($('closePrice').value||'').trim()){$('closeCalc').textContent='Bitte beim manuellen Ausstieg den tatsächlichen Schlusskurs eintragen.';return}if(prev.mode==='manual'&&!String($('closeNote').value||'').trim()){$('closeCalc').textContent='Bitte beim manuellen Ausstieg kurz begründen, warum vom Plan abgewichen wurde.';return}const exit=prev.exit;const result=Math.round(prev.points);const pnl=prev.pnl;const closeType=prev.mode==='target'?'Take-Profit':prev.mode==='stop'?'Stop-Loss':'Manuell';const note=$('closeNote').value||closeType;state.trades.unshift({date:new Date().toLocaleDateString('de-DE'),createdAt:new Date().toISOString(),market:p.market,direction:p.direction,result,pnl,contracts:prev.contracts,pointValue:prev.pointValue,entry:p.entry,target:p.target,stop:p.stop,exit,closeType,planDeviation:prev.deviation,note,symbol:p.symbol,sourceTradeId:p.id});removeActiveTrade(p.id);if($('closeMode'))$('closeMode').value='auto';if($('closePrice'))$('closePrice').value='';$('closeNote').value='';renderAll();scheduleSave();show('journal')}
+async function deleteActiveTrade(){
+  const p=currentTrade();
+  if(!p)return;
+  const confirmed=window.confirm(`„${p.market}“ wirklich löschen?\n\nDer Trade wird dauerhaft entfernt und NICHT ins Journal eingetragen.`);
+  if(!confirmed)return;
+  const id=p.id;
+  removeActiveTrade(id);
+  delete lastLiveById[id];
+  renderAll();
+  updateGlobalMarketPill();
+  try{
+    await saveCloud();
+    selectedTradeId=null;
+    renderAll();
+    cloudMsg('Cloud synchronisiert');
+  }catch(error){
+    console.error('Active trade delete failed',error);
+    alert('Der Trade konnte nicht dauerhaft gespeichert werden. Bitte Internetverbindung prüfen und erneut versuchen.');
+  }
+}
+
 function exportJournal(){const txt=(state.trades||[]).map(t=>`${t.date}; ${t.market}; ${t.direction}; ${t.result||0}P; ${euroShort(tradePnlEuro(t))}; ${t.note||''}`).join('\n');const blob=new Blob([txt],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='atlas-journal.txt';a.click();URL.revokeObjectURL(a.href)}
 function saveAccountBase(){state.settings.accountStart=num($('accountStart').value)||0;$('accountMsg').textContent='Kontostand-Basis gespeichert. Challenge wird aus Journal neu berechnet.';renderChallenge();scheduleSave()}
 function milestoneDates(done){const trades=[...(state.trades||[])].reverse();let bal=accountStart();const dates={};for(let i=1;i<=done;i++){if(bal>=i*CHALLENGE_BOX_VALUE)dates[i]='Start'}for(const t of trades){bal+=tradePnlEuro(t);for(let i=1;i<=done;i++){if(!dates[i]&&bal>=i*CHALLENGE_BOX_VALUE)dates[i]=t.date||new Date(t.createdAt||Date.now()).toLocaleDateString('de-DE')}}return dates}
 function renderChallenge(){const snap=challengeSnapshot();if($('accountStart'))$('accountStart').value=state.settings.accountStart||'';$('accountBalance').textContent=euroShort(snap.balance);$('journalProfit').textContent=euroShort(snap.pnl);$('wealthNow').textContent=snap.done+' / '+CHALLENGE_BOXES;$('wealthPct').textContent=snap.pct+'%';$('wealthOpen').textContent=euroShort(snap.open);$('nextMilestone').textContent=snap.done>=CHALLENGE_BOXES?'Ziel erreicht':euroShort(snap.next);const bar=$('wealthBar');if(bar)bar.style.width=snap.pct+'%';const dates=milestoneDates(snap.done);$('boxes').innerHTML=Array.from({length:CHALLENGE_BOXES},(_,i)=>{const n=i+1, amount=n*CHALLENGE_BOX_VALUE, done=n<=snap.done;return `<div class="box ${done?'done':''}"><b>${n}</b><span>${euroShort(amount)}</span><small>${done?(dates[n]||'erreicht'):''}</small></div>`}).join('')}
 function marketSelect(){const val=$('fMarketSelect').value;const m=markets.find(x=>x[0]===val);if(!m)return;if(val!=='CUSTOM'){$('fSymbol').value=m[0];$('fMarket').value=m[2]}}
 function clock(){$('clockPill').textContent=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}
-function boot(){makeNav();$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnNewTrade').onclick=startNewTrade;$('btnBackDesk').onclick=()=>{selectedTradeId=null;renderPlan();scrollTo(0,0)};$('btnEditTrade').onclick=editSelectedTrade;if($('closeMode'))$('closeMode').onchange=()=>renderPlan();if($('closePrice'))$('closePrice').oninput=()=>renderPlan();$('btnExportJournal').onclick=exportJournal;if($('btnSaveAccount'))$('btnSaveAccount').onclick=saveAccountBase;$('fMarketSelect').onchange=()=>{marketSelect();markFormDirty();renderDeviationPanel()};
+function boot(){makeNav();$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnNewTrade').onclick=startNewTrade;$('btnBackDesk').onclick=()=>{selectedTradeId=null;renderPlan();scrollTo(0,0)};$('btnEditTrade').onclick=editSelectedTrade;if($('btnDeleteActiveTrade'))$('btnDeleteActiveTrade').onclick=deleteActiveTrade;if($('closeMode'))$('closeMode').onchange=()=>renderPlan();if($('closePrice'))$('closePrice').oninput=()=>renderPlan();$('btnExportJournal').onclick=exportJournal;if($('btnSaveAccount'))$('btnSaveAccount').onclick=saveAccountBase;$('fMarketSelect').onchange=()=>{marketSelect();markFormDirty();renderDeviationPanel()};
   ['fMarket','fSymbol','fDirection','fPositionStatus','fContracts','fPointValue','fEntry','fStop','fTarget','fZone','fWhy','fRule'].forEach(id=>{
     const el=$(id);if(!el)return;
     el.addEventListener('input',()=>{markFormDirty();renderDeviationPanel()});
     el.addEventListener('change',()=>{markFormDirty();renderDeviationPanel()});
-  });$('hkcmFile').addEventListener('change',e=>handleImage(e,'hkcm'));$('tvFile').addEventListener('change',e=>handleImage(e,'tv'));$('modalClose').onclick=()=>$('imgModal').classList.remove('show');$('imgModal').onclick=e=>{if(e.target.id==='imgModal')$('imgModal').classList.remove('show')};document.addEventListener('click',e=>{if(e.target.classList.contains('zoomable')){$('modalImg').src=e.target.src;$('imgModal').classList.add('show')}});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refreshAllMarketData()});clock();setInterval(clock,30000);renderAll()}
+  });$('hkcmFile').addEventListener('change',e=>handleImage(e,'hkcm'));$('tvFile').addEventListener('change',e=>handleImage(e,'tv'));$('modalClose').onclick=()=>$('imgModal').classList.remove('show');$('imgModal').onclick=e=>{if(e.target.id==='imgModal')$('imgModal').classList.remove('show')};document.addEventListener('click',e=>{if(e.target.classList.contains('zoomable')){$('modalImg').src=e.target.src;$('imgModal').classList.add('show')}});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user&&cloudReady)refreshAllMarketData()});clock();setInterval(clock,30000);renderAll()}
 boot();
