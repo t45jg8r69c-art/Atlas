@@ -19,7 +19,7 @@ const defaultState={
   settings:{autoYahoo:false,accountStart:0},
   updatedAt:null
 };
-let state=structuredClone(defaultState), user=null, unsub=null, saving=false, saveQueued=false, savePromise=Promise.resolve(), saveTimer=null, cloudReady=false, selectedTradeId=null, lastLiveById={}, marketTimer=null, marketBusy=false, formDraft=null, formDirty=false, formMode='none';
+let state=structuredClone(defaultState), user=null, unsub=null, saving=false, saveQueued=false, savePromise=Promise.resolve(), saveTimer=null, cloudReady=false, selectedTradeId=null, lastLiveById={}, marketTimer=null, marketBusy=false, formDraft=null, formDirty=false, formMode='none', imageJobs={hkcm:null,tv:null};
 const $=id=>document.getElementById(id);
 function fmt(n){const x=Number(n);return Number.isFinite(x)?x.toLocaleString('de-DE',{maximumFractionDigits:2}):'-'}
 function num(v){return Number(String(v??'').replace(',','.'))}
@@ -33,7 +33,62 @@ function journalPnl(){return (state.trades||[]).reduce((sum,t)=>sum+tradePnlEuro
 function accountStart(){return Number(state.settings?.accountStart)||0}
 function accountBalance(){return accountStart()+journalPnl()}
 function challengeSnapshot(){const balance=Math.max(0,accountBalance());const done=Math.min(CHALLENGE_BOXES,Math.floor(balance/CHALLENGE_BOX_VALUE));const pct=Math.min(100,Math.round(balance/CHALLENGE_TARGET*100));const open=Math.max(0,CHALLENGE_TARGET-balance);const next=Math.min(CHALLENGE_TARGET,(done+1)*CHALLENGE_BOX_VALUE);return{balance,done,pct,open,next,pnl:journalPnl()}}
-function planSnapshot(p){return{brokerAccount:p.brokerAccount||'Nicht zugeordnet',market:p.market,symbol:p.symbol,direction:p.direction,positionStatus:p.positionStatus,contracts:p.contracts,pointValue:p.pointValue,entry:p.entry,stop:p.stop,target:p.target,zone:p.zone,why:p.why,rule:p.rule,hkcm:p.hkcm,tv:p.tv,createdAt:p.createdAt||new Date().toISOString()}}
+function imageSignature(src){
+  const value=String(src||'');
+  if(!value)return'';
+  return `${value.length}:${value.slice(0,48)}:${value.slice(-48)}`;
+}
+function planSnapshot(p){return{
+  brokerAccount:p.brokerAccount||'Nicht zugeordnet',market:p.market,symbol:p.symbol,direction:p.direction,
+  positionStatus:p.positionStatus,contracts:p.contracts,pointValue:p.pointValue,entry:p.entry,stop:p.stop,target:p.target,
+  zone:p.zone,why:p.why,rule:p.rule,
+  hkcmPresent:!!p.hkcm,hkcmSignature:imageSignature(p.hkcm),
+  tvPresent:!!p.tv,tvSignature:imageSignature(p.tv),
+  createdAt:p.createdAt||new Date().toISOString()
+}}
+function compactOriginalPlan(original,trade=null){
+  if(!original)return trade?planSnapshot(trade):null;
+  const clean={...original};
+  const hkcmRaw=String(clean.hkcm||'');
+  const tvRaw=String(clean.tv||'');
+  clean.hkcmPresent=clean.hkcmPresent??!!hkcmRaw;
+  clean.tvPresent=clean.tvPresent??!!tvRaw;
+  clean.hkcmSignature=clean.hkcmSignature||imageSignature(hkcmRaw);
+  clean.tvSignature=clean.tvSignature||imageSignature(tvRaw);
+  delete clean.hkcm;
+  delete clean.tv;
+  return clean;
+}
+function compactDeviationHistory(deviations){
+  return (Array.isArray(deviations)?deviations:[]).map(d=>({
+    ...d,
+    changes:(Array.isArray(d.changes)?d.changes:[]).map(c=>{
+      if(c?.field!=='hkcm'&&c?.field!=='tv')return c;
+      const before=String(c.before||'');
+      const after=String(c.after||'');
+      return {...c,before:before.startsWith('data:image')?'Vorhanden':before,after:after.startsWith('data:image')?'Geändert / vorhanden':after};
+    })
+  }));
+}
+function prepareStateForCloud(sourceState){
+  const payload=structuredClone(sourceState);
+  // state.plan is a legacy mirror of activeTrades[0] and must not duplicate screenshots.
+  delete payload.plan;
+  payload.activeTrades=(payload.activeTrades||[]).map(t=>({
+    ...t,
+    originalPlan:compactOriginalPlan(t.originalPlan,t),
+    deviations:compactDeviationHistory(t.deviations)
+  }));
+  payload.trades=(payload.trades||[]).map(t=>({
+    ...t,
+    originalPlan:compactOriginalPlan(t.originalPlan,null),
+    deviations:compactDeviationHistory(t.deviations)
+  }));
+  return payload;
+}
+function cloudPayloadSize(payload){
+  try{return new Blob([JSON.stringify(payload)]).size}catch{return JSON.stringify(payload).length}
+}
 function normalizedComparable(v){
   if(v===null||v===undefined)return'';
   if(typeof v==='number')return Number(v);
@@ -51,10 +106,14 @@ function detectPlanChanges(original,current){
   ];
   return fields.flatMap(([key,label])=>{
     if(key==='hkcm'||key==='tv'){
-      const beforeRaw=String(original[key]||'');
+      const beforeRaw=String(original[key]||''); // legacy snapshots
+      const beforePresent=original[key+'Present']??!!beforeRaw;
+      const beforeSignature=String(original[key+'Signature']||imageSignature(beforeRaw));
       const afterRaw=String(current[key]||'');
-      if(beforeRaw===afterRaw)return[];
-      return[{field:key,label,before:beforeRaw?'Vorhanden':'Nicht vorhanden',after:afterRaw?'Geändert / vorhanden':'Entfernt'}];
+      const afterPresent=!!afterRaw;
+      const afterSignature=imageSignature(afterRaw);
+      if(beforePresent===afterPresent&&beforeSignature===afterSignature)return[];
+      return[{field:key,label,before:beforePresent?'Vorhanden':'Nicht vorhanden',after:afterPresent?'Geändert / vorhanden':'Entfernt'}];
     }
     const before=normalizedComparable(original[key]);
     const after=normalizedComparable(current[key]);
@@ -307,15 +366,15 @@ function normalizeState(data={}){
   // Ein absichtlich leerer Trading Desk darf niemals aus data.plan wiederbelebt werden.
   if(!hasActiveTradesField&&data.plan&&data.plan.createdAt){
     const migrated={...tradeTemplate,...data.plan,id:data.plan.id||uid(),createdAt:data.plan.createdAt||new Date().toISOString(),updatedAt:data.plan.updatedAt||new Date().toISOString()};
-    migrated.originalPlan=migrated.originalPlan||planSnapshot(migrated);
+    migrated.originalPlan=compactOriginalPlan(migrated.originalPlan,migrated);
     s.activeTrades=[migrated];
   }
 
   if(s.activeTrades.length>0){
     s.activeTrades=s.activeTrades.map(t=>{
       const n={...tradeTemplate,...t,id:t.id||uid()};
-      n.originalPlan=n.originalPlan||planSnapshot(n);
-      if(!Array.isArray(n.deviations))n.deviations=[];
+      n.originalPlan=compactOriginalPlan(n.originalPlan,n);
+      n.deviations=compactDeviationHistory(n.deviations);
       return n;
     });
     s.plan=s.activeTrades[0];
@@ -359,6 +418,7 @@ function clearFormDraft(){
   formDraft=null;
   formDirty=false;
   formMode='none';
+  imageJobs={hkcm:null,tv:null};
   clearFileInputs();
 }
 function safeRenderAll(){
@@ -369,8 +429,8 @@ function safeRenderAll(){
   renderChallenge();
 }
 
-function upsertTrade(trade){const arr=state.activeTrades||[];const i=arr.findIndex(t=>t.id===trade.id);if(i>=0)arr[i]=trade;else arr.unshift(trade);state.activeTrades=arr;state.plan=trade;selectedTradeId=trade.id}
-function removeActiveTrade(id){state.activeTrades=(state.activeTrades||[]).filter(t=>t.id!==id);if(selectedTradeId===id)selectedTradeId=null;state.plan=state.activeTrades[0]||{...tradeTemplate};}
+function upsertTrade(trade){const arr=state.activeTrades||[];const i=arr.findIndex(t=>t.id===trade.id);if(i>=0)arr[i]=trade;else arr.unshift(trade);state.activeTrades=arr;state.plan={...tradeTemplate,id:trade.id,market:trade.market,symbol:trade.symbol};selectedTradeId=trade.id}
+function removeActiveTrade(id){state.activeTrades=(state.activeTrades||[]).filter(t=>t.id!==id);if(selectedTradeId===id)selectedTradeId=null;const first=state.activeTrades[0];state.plan=first?{...tradeTemplate,id:first.id,market:first.market,symbol:first.symbol}:{...tradeTemplate};}
 function makeNav(){const html=tabs.map((t,i)=>`<button data-tab="${t[0]}" class="${i?'':'active'}">${t[1]}</button>`).join('');$('nav').innerHTML=html;$('bottom').innerHTML=html;document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.tab)))}
 function show(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
@@ -405,9 +465,11 @@ async function saveCloud(){
         saveQueued=false;
         const savedAt=new Date().toISOString();
         state.updatedAt=savedAt;
-        const payload=structuredClone(state);
+        const payload=prepareStateForCloud(state);
         payload.updatedAt=savedAt;
-        // Vollständigen State atomar ersetzen. So bleiben activeTrades, Journal und Settings konsistent.
+        const bytes=cloudPayloadSize(payload);
+        if(bytes>900000)throw new Error(`Atlas-Datenbestand ist mit ${Math.round(bytes/1024)} KB zu groß. Bitte alte Screenshots reduzieren.`);
+        // Vollständigen, bereinigten State atomar ersetzen. Legacy-Duplikate werden entfernt.
         await stateRef().set(payload);
       }
       cloudMsg('Cloud synchronisiert');
@@ -527,7 +589,7 @@ function editSelectedTrade(){
   loadForm(formDraft);
   show('create');
 }
-async function selectTrade(id){selectedTradeId=id;renderPlan();scrollTo(0,0);const p=currentTrade();if(!p||!p.symbol||p.symbol==='CUSTOM')return;if($('liveMsg'))$('liveMsg').textContent='Letzter gespeicherter Live-Kurs wird angezeigt. Aktualisierung läuft im Hintergrund.';const ok=await fetchMarketDataForTrade(p,{silent:true});renderAll();if(ok)scheduleSave();updateGlobalMarketPill()}
+async function selectTrade(id){selectedTradeId=id;renderPlan();scrollTo(0,0);const p=currentTrade();if(!p||!p.symbol||p.symbol==='CUSTOM')return;if($('liveMsg'))$('liveMsg').textContent='Letzter gespeicherter Live-Kurs wird angezeigt. Aktualisierung läuft im Hintergrund.';const ok=await fetchMarketDataForTrade(p,{silent:true});renderAll();updateGlobalMarketPill()}
 function renderDesk(){const arr=state.activeTrades||[];if(!arr.length){$('activeTradeList').innerHTML=`<div class="emptyDesk"><h2>Noch kein aktiver Trade</h2><p>Lege deinen ersten Trade an. Atlas zeigt dir danach nur eine ruhige Übersicht und öffnet Details erst auf Klick.</p></div>`}else{const groups=new Map();arr.forEach(t=>{const account=(t.brokerAccount||'Nicht zugeordnet').trim()||'Nicht zugeordnet';if(!groups.has(account))groups.set(account,[]);groups.get(account).push(t)});const sorted=[...groups.entries()].sort(([a],[b])=>a==='Nicht zugeordnet'?1:b==='Nicht zugeordnet'?-1:a.localeCompare(b,'de'));$('activeTradeList').innerHTML=sorted.map(([account,trades])=>`<section class="brokerAccountGroup"><div class="brokerAccountHeader"><div><span>Brokerkonto</span><b>${escapeHtml(account)}</b></div><small>${trades.length} ${trades.length===1?'Trade':'Trades'}</small></div><div class="brokerAccountTrades">${trades.map(t=>tradeDeskCard(t)).join('')}</div></section>`).join('')}document.querySelectorAll('[data-selecttrade]').forEach(b=>b.addEventListener('click',()=>selectTrade(b.dataset.selecttrade)));if($('tradeDetail'))$('tradeDetail').classList.toggle('hidden',!currentTrade())}
 function tradeLiveStatus(t){
   if(!t||!t.symbol||t.symbol==='CUSTOM')return{key:'none',label:'Manuell',detail:'Keine Live-Daten'};
@@ -646,120 +708,130 @@ async function handleImage(e,type){
   const input=e.currentTarget||e.target;
   const file=input?.files?.[0];
   if(!file)return;
-
   const preview=$(type+'Preview');
+  const saveBtn=$('btnSavePlan');
 
-  try{
-    if($('saveMsg'))$('saveMsg').textContent='Screenshot wird eingelesen...';
+  const job=(async()=>{
+    try{
+      if(saveBtn)saveBtn.disabled=true;
+      if($('saveMsg'))$('saveMsg').textContent='Screenshot wird verarbeitet. Bitte kurz warten...';
 
-    // Immediate local preview confirms that the file selection worked.
-    const immediate=await readFileDataUrl(file);
-    if(preview)preview.innerHTML=imgHtml(immediate);
+      const immediate=await readFileDataUrl(file);
+      if(preview)preview.innerHTML=imgHtml(immediate);
+      const image=await compressImage(file);
 
-    const image=await compressImage(file);
-
-    if(!formDraft){
-      formDraft=formMode==='edit'&&currentTrade()
-        ? structuredClone(currentTrade())
-        : emptyTradeDraft();
+      if(!formDraft){
+        formDraft=formMode==='edit'&&currentTrade()?structuredClone(currentTrade()):emptyTradeDraft();
+      }
+      // collectFormDraft preserves all text fields currently visible in the form.
+      formDraft={...collectFormDraft(),[type]:image};
+      formDirty=true;
+      if(preview)preview.innerHTML=imgHtml(image);
+      if($('saveMsg'))$('saveMsg').textContent='Screenshot fertig verarbeitet und im Entwurf gesichert.';
+      renderDeviationPanel();
+      return image;
+    }catch(error){
+      console.error('Screenshot processing failed',error);
+      if(preview)preview.innerHTML='<div class="emptyShot">Screenshot konnte nicht geladen werden.</div>';
+      if($('saveMsg'))$('saveMsg').textContent='Screenshot konnte nicht verarbeitet werden. Bitte JPG oder PNG verwenden.';
+      throw error;
+    }finally{
+      if(input)input.value='';
     }
+  })();
 
-    // Preserve all currently typed form values and only replace this screenshot.
-    const currentDraft=collectFormDraft();
-    formDraft={...currentDraft,[type]:image};
-    formDirty=true;
-
-    if(type==='hkcm')formDraft.hkcm=image;
-    if(type==='tv')formDraft.tv=image;
-
-    if(preview)preview.innerHTML=imgHtml(image);
-    if($('saveMsg'))$('saveMsg').textContent='Screenshot im Entwurf gespeichert. Bitte den Trade speichern.';
-
-    renderDeviationPanel();
-  }catch(error){
-    console.error('Screenshot upload failed',error);
-    if(preview)preview.innerHTML='<div class="emptyShot">Screenshot konnte nicht geladen werden.</div>';
-    if($('saveMsg'))$('saveMsg').textContent='Screenshot konnte nicht verarbeitet werden. Bitte JPG oder PNG verwenden oder das Bild vorher verkleinern.';
-  }finally{
-    if(input)input.value='';
+  imageJobs[type]=job;
+  try{await job}catch{}finally{
+    if(imageJobs[type]===job)imageJobs[type]=null;
+    if(saveBtn&&!imageJobs.hkcm&&!imageJobs.tv)saveBtn.disabled=false;
   }
 }
 
+async function waitForImageJobs(){
+  const pending=[imageJobs.hkcm,imageJobs.tv].filter(Boolean);
+  if(!pending.length)return;
+  if($('saveMsg'))$('saveMsg').textContent='Warte auf die Verarbeitung der Screenshots...';
+  const results=await Promise.allSettled(pending);
+  const failed=results.find(r=>r.status==='rejected');
+  if(failed)throw failed.reason||new Error('Screenshot-Verarbeitung fehlgeschlagen');
+}
+
 async function savePlan(){
-  const editingTrade=formMode==='edit'?(currentTrade()||state.activeTrades.find(t=>t.id===formDraft?.id)):null;
-  const isNew=formMode==='new'||!editingTrade;
-  const deviationChanges=!isNew?pendingDeviationChanges():[];
-  const p=editingTrade?{...editingTrade}:{...emptyTradeDraft(),id:formDraft?.id||uid(),createdAt:formDraft?.createdAt||new Date().toISOString()};
+  const saveBtn=$('btnSavePlan');
+  const originalButtonText=saveBtn?.textContent||'Trade speichern';
+  const previousState=structuredClone(state);
+  const previousSelected=selectedTradeId;
 
-  p.brokerAccount=$('fBrokerAccount')?.value.trim()||'Nicht zugeordnet';
-  p.market=$('fMarket').value.trim()||'Unbenannter Trade';
-  p.symbol=$('fSymbol').value.trim()||'CUSTOM';
-  p.direction=$('fDirection').value;
-  p.positionStatus=$('fPositionStatus').value;
-  p.contracts=num($('fContracts').value)||1;
-  p.pointValue=num($('fPointValue').value)||1;
-  p.entry=num($('fEntry').value);
-  p.target=num($('fTarget').value);
-  p.stop=num($('fStop').value);
-  p.zone=num($('fZone').value);
-  p.why=$('fWhy').value;
-  p.rule=$('fRule').value;
-  p.hkcm=formDraft&&typeof formDraft.hkcm==='string'?formDraft.hkcm:'';
-  p.tv=formDraft&&typeof formDraft.tv==='string'?formDraft.tv:'';
-  p.updatedAt=new Date().toISOString();
-  if(isNew){
-    p.current='';
-    p.previousPrice=null;
-    p.lastPrice=null;
-    p.liveUpdatedAt=null;
-    p.dataSource=null;
-    p.previousDataSource=null;
-    p.liveChange=null;
-    p.liveStatus='pending';
-    p.liveErrorCount=0;
-    p.liveErrorAt=null;
-    p.autoExitArmed=false;
-  }
+  try{
+    if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='Wird gespeichert...'}
+    await waitForImageJobs();
 
-  if(!isNew&&deviationChanges.length){
-    const reason=$('deviationReason').value;
-    const note=$('deviationNote').value.trim();
-    if(!reason){
-      $('saveMsg').textContent='Bitte zuerst den Grund für die Planabweichung auswählen.';
-      $('deviationReason').focus();
-      return;
+    const editingTrade=formMode==='edit'?(currentTrade()||state.activeTrades.find(t=>t.id===formDraft?.id)):null;
+    const isNew=formMode==='new'||!editingTrade;
+    const deviationChanges=!isNew?pendingDeviationChanges():[];
+    const p=editingTrade?{...editingTrade}:{...emptyTradeDraft(),id:formDraft?.id||uid(),createdAt:formDraft?.createdAt||new Date().toISOString()};
+
+    p.brokerAccount=$('fBrokerAccount')?.value.trim()||'Nicht zugeordnet';
+    p.market=$('fMarket').value.trim()||'Unbenannter Trade';
+    p.symbol=$('fSymbol').value.trim()||'CUSTOM';
+    p.direction=$('fDirection').value;
+    p.positionStatus=$('fPositionStatus').value;
+    p.contracts=num($('fContracts').value)||1;
+    p.pointValue=num($('fPointValue').value)||1;
+    p.entry=num($('fEntry').value);
+    p.target=num($('fTarget').value);
+    p.stop=num($('fStop').value);
+    p.zone=num($('fZone').value);
+    p.why=$('fWhy').value;
+    p.rule=$('fRule').value;
+    p.hkcm=String(formDraft?.hkcm??editingTrade?.hkcm??'');
+    p.tv=String(formDraft?.tv??editingTrade?.tv??'');
+    p.updatedAt=new Date().toISOString();
+
+    if(isNew){
+      p.current='';p.previousPrice=null;p.lastPrice=null;p.liveUpdatedAt=null;p.dataSource=null;
+      p.previousDataSource=null;p.liveChange=null;p.liveStatus='pending';p.liveErrorCount=0;p.liveErrorAt=null;p.autoExitArmed=false;
+      p.originalPlan=planSnapshot(p);
+    }else{
+      p.originalPlan=compactOriginalPlan(p.originalPlan,p);
     }
-    if(reason==='Sonstiges'&&!note){
-      $('saveMsg').textContent='Bitte die Planabweichung kurz erläutern.';
-      $('deviationNote').focus();
-      return;
+
+    if(!isNew&&deviationChanges.length){
+      const reason=$('deviationReason').value;
+      const note=$('deviationNote').value.trim();
+      if(!reason){$('saveMsg').textContent='Bitte zuerst den Grund für die Planabweichung auswählen.';$('deviationReason').focus();return}
+      if(reason==='Sonstiges'&&!note){$('saveMsg').textContent='Bitte die Planabweichung kurz erläutern.';$('deviationNote').focus();return}
+      recordDeviation(p,deviationChanges,reason,note);
+      p.deviations=compactDeviationHistory(p.deviations);
     }
-    recordDeviation(p,deviationChanges,reason,note);
-  }
-  if(!Array.isArray(state.activeTrades)) state.activeTrades=[];
-  upsertTrade(p);
-  $('saveMsg').textContent=isNew?'Neuer Trade wird im Trading Desk gespeichert...':'Trade wird aktualisiert...';
 
-  // Neue Trades sollen nach dem Speichern als ruhige Karte im Trading Desk erscheinen.
-  // Details öffnen sich erst, wenn der Trade angeklickt wird.
-  if(isNew) selectedTradeId=null;
+    if(!Array.isArray(state.activeTrades))state.activeTrades=[];
+    upsertTrade(p);
+    if(isNew)selectedTradeId=null;
+    $('saveMsg').textContent='Speichere dauerhaft in der Cloud...';
 
-  if($('deviationReason'))$('deviationReason').value='';
-  if($('deviationNote'))$('deviationNote').value='';
-  clearFormDraft();
-  clearFileInputs();
-  if($('hkcmPreview'))$('hkcmPreview').innerHTML=imgHtml('');
-  if($('tvPreview'))$('tvPreview').innerHTML=imgHtml('');
-  renderAll();
-  show('plan');
+    // Important: do not clear the draft or leave the form before Firestore confirms the write.
+    await saveCloud();
 
-  // Sofort speichern, damit PC und iPhone direkt denselben Trading Desk sehen.
-  await saveCloud();
+    if($('deviationReason'))$('deviationReason').value='';
+    if($('deviationNote'))$('deviationNote').value='';
+    clearFormDraft();
+    if($('hkcmPreview'))$('hkcmPreview').innerHTML=imgHtml('');
+    if($('tvPreview'))$('tvPreview').innerHTML=imgHtml('');
+    renderAll();
+    show('plan');
+    cloudMsg('Cloud synchronisiert');
 
-  if(p.symbol && p.symbol!=='CUSTOM'){
-    const oldSelected=selectedTradeId;
-    selectedTradeId=p.id;
-    setTimeout(async()=>{await fetchYahoo(); selectedTradeId=oldSelected; renderAll();},500);
+    // Live data refresh is local only; it must not re-save the whole Atlas document.
+    if(p.symbol&&p.symbol!=='CUSTOM')setTimeout(()=>fetchMarketDataForTrade(p,{silent:true}).then(()=>renderAll()),500);
+  }catch(error){
+    console.error('Trade save failed',error);
+    state=normalizeState(previousState);
+    selectedTradeId=previousSelected;
+    renderDesk();renderPlan();renderTrades();renderChallenge();
+    if($('saveMsg'))$('saveMsg').textContent='Speichern fehlgeschlagen. Deine Eingaben und Screenshots bleiben im Entwurf erhalten. Bitte erneut versuchen.';
+  }finally{
+    if(saveBtn){saveBtn.disabled=!!(imageJobs.hkcm||imageJobs.tv);saveBtn.textContent=originalButtonText}
   }
 }
 async function fetchMarketDataForTrade(p,{silent=false}={}){
@@ -792,7 +864,7 @@ async function fetchMarketDataForTrade(p,{silent=false}={}){
     renderDesk();
   }
 }
-async function fetchYahoo(){const p=currentTrade();if(!p)return;$('liveMsg').textContent='Live-Kurs wird geladen...';updateGlobalMarketPill();const ok=await fetchMarketDataForTrade(p);setDataPill(ok?'Marktdaten live':'Marktdaten gestört',ok?'ok':'error');renderAll();if(ok)scheduleSave()}
+async function fetchYahoo(){const p=currentTrade();if(!p)return;$('liveMsg').textContent='Live-Kurs wird geladen...';updateGlobalMarketPill();const ok=await fetchMarketDataForTrade(p);setDataPill(ok?'Marktdaten live':'Marktdaten gestört',ok?'ok':'error');renderAll()}
 function updateGlobalMarketPill(){
   const trades=(state.activeTrades||[]).filter(t=>t.symbol&&t.symbol!=='CUSTOM');
   if(!trades.length){setDataPill('Keine Live-Märkte','');return}
@@ -817,7 +889,6 @@ async function refreshAllMarketData(){
       success?ok++:failed++;
     }
     renderAll();
-    if(ok)scheduleSave();
     setDataPill(failed&&ok?`${ok} live · ${failed} offen`:failed?'Marktdaten gestört':`${ok} Trade${ok===1?'':'s'} live`,failed?'error':'ok');
   }catch(error){
     console.error('Market refresh failed',error);
@@ -945,7 +1016,7 @@ function renderChallenge(){const snap=challengeSnapshot();if($('accountStart'))$
 function marketSelect(){const val=$('fMarketSelect').value;const m=markets.find(x=>x[0]===val);if(!m)return;if(val!=='CUSTOM'){$('fSymbol').value=m[0];$('fMarket').value=m[2]}}
 function clock(){$('clockPill').textContent=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}
 function boot(){makeNav();$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnNewTrade').onclick=startNewTrade;$('btnBackDesk').onclick=()=>{selectedTradeId=null;renderPlan();scrollTo(0,0)};$('btnEditTrade').onclick=editSelectedTrade;if($('btnDeleteActiveTrade'))$('btnDeleteActiveTrade').onclick=deleteActiveTrade;if($('closeMode'))$('closeMode').onchange=()=>renderPlan();if($('closePrice'))$('closePrice').oninput=()=>renderPlan();$('btnExportJournal').onclick=exportJournal;if($('btnSaveAccount'))$('btnSaveAccount').onclick=saveAccountBase;$('fMarketSelect').onchange=()=>{marketSelect();markFormDirty();renderDeviationPanel()};
-  ['fMarket','fSymbol','fDirection','fPositionStatus','fContracts','fPointValue','fEntry','fStop','fTarget','fZone','fWhy','fRule'].forEach(id=>{
+  ['fBrokerAccount','fMarket','fSymbol','fDirection','fPositionStatus','fContracts','fPointValue','fEntry','fStop','fTarget','fZone','fWhy','fRule'].forEach(id=>{
     const el=$(id);if(!el)return;
     el.addEventListener('input',()=>{markFormDirty();renderDeviationPanel()});
     el.addEventListener('change',()=>{markFormDirty();renderDeviationPanel()});
