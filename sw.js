@@ -1,10 +1,10 @@
-const CACHE_NAME = 'atlas-v5.8.9-nautilus-clean-1';
+const CACHE_NAME = 'atlas-v5.8.9-nautilus-balanced-1';
 const APP_SHELL = [
   './',
   './index.html',
-  './style.css?v=589-nautilus-clean-1',
-  './app.js?v=589-nautilus-clean-1',
-  './firebase.js?v=589-nautilus-clean-1',
+  './style.css?v=589-nautilus-balanced-1',
+  './app.js?v=589-nautilus-balanced-1',
+  './firebase.js?v=589-nautilus-balanced-1',
   './manifest.webmanifest',
   './offline.html',
   './icons/apple-touch-icon.png',
