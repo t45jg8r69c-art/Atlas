@@ -1,10 +1,10 @@
-const CACHE_NAME = 'atlas-v5.8.10-icons-centered-1';
+const CACHE_NAME = 'atlas-v5.8.10-icons-centered-loginfix-1';
 const APP_SHELL = [
   './',
   './index.html',
-  './style.css?v=5810-icons-centered-1',
-  './app.js?v=5810-icons-centered-1',
-  './firebase.js?v=5810-icons-centered-1',
+  './style.css?v=5810-icons-centered-loginfix-1',
+  './app.js?v=5810-icons-centered-loginfix-1',
+  './firebase.js?v=5810-icons-centered-loginfix-1',
   './manifest.webmanifest',
   './offline.html',
   './icons/apple-touch-icon.png',
