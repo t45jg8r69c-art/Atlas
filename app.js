@@ -16,9 +16,7 @@ const defaultState={
   settings:{autoYahoo:false,accountStart:0},
   updatedAt:null
 };
-let state=structuredClone(defaultState), user=null, unsub=null, saving=false, saveTimer=null, selectedTradeId=null, lastLiveById={}, marketTimer=null, marketBusy=false, formDraft=null, formDirty=false, formMode='none';
-const locallyDeletedTradeIds=new Set();
-let cloudWriteQueue=Promise.resolve();
+let state=structuredClone(defaultState), user=null, unsub=null, saving=false, saveQueued=false, savePromise=Promise.resolve(), saveTimer=null, cloudReady=false, selectedTradeId=null, lastLiveById={}, marketTimer=null, marketBusy=false, formDraft=null, formDirty=false, formMode='none';
 const $=id=>document.getElementById(id);
 function fmt(n){const x=Number(n);return Number.isFinite(x)?x.toLocaleString('de-DE',{maximumFractionDigits:2}):'-'}
 function num(v){return Number(String(v??'').replace(',','.'))}
@@ -241,7 +239,6 @@ function normalizeState(data={}){
   const hasActiveTradesField=Object.prototype.hasOwnProperty.call(data,'activeTrades');
   let s={...structuredClone(defaultState),...data,settings:{...defaultState.settings,...(data.settings||{})}};
   if(!Array.isArray(s.activeTrades))s.activeTrades=[];
-  s.activeTrades=s.activeTrades.filter(t=>!locallyDeletedTradeIds.has(t?.id));
   if(!Array.isArray(s.trades))s.trades=[];
   if(!Array.isArray(s.challenge))s.challenge=[];
 
@@ -311,32 +308,7 @@ function safeRenderAll(){
 }
 
 function upsertTrade(trade){const arr=state.activeTrades||[];const i=arr.findIndex(t=>t.id===trade.id);if(i>=0)arr[i]=trade;else arr.unshift(trade);state.activeTrades=arr;state.plan=trade;selectedTradeId=trade.id}
-function removeActiveTrade(id){state.activeTrades=(state.activeTrades||[]).filter(t=>t.id!==id);delete lastLiveById[id];if(selectedTradeId===id)selectedTradeId=null;state.plan=state.activeTrades[0]||{...tradeTemplate};}
-async function deleteActiveTrade(){
-  const p=currentTrade();
-  if(!p)return;
-  const ok=window.confirm(`Aktiven Trade „${p.market}“ wirklich löschen?
-
-Der Trade wird NICHT ins Journal eingetragen.`);
-  if(!ok)return;
-
-  const id=p.id;
-  locallyDeletedTradeIds.add(id);
-  clearTimeout(saveTimer);
-  removeActiveTrade(id);
-  renderAll();
-  show('plan');
-  cloudMsg('Trade wird gelöscht...');
-
-  try{
-    await saveCloud();
-    cloudMsg('Trade dauerhaft gelöscht');
-  }catch(error){
-    console.error('Trade delete failed',error);
-    cloudMsg('Löschen fehlgeschlagen');
-  }
-}
-
+function removeActiveTrade(id){state.activeTrades=(state.activeTrades||[]).filter(t=>t.id!==id);if(selectedTradeId===id)selectedTradeId=null;state.plan=state.activeTrades[0]||{...tradeTemplate};}
 function makeNav(){const html=tabs.map((t,i)=>`<button data-tab="${t[0]}" class="${i?'':'active'}">${t[1]}</button>`).join('');$('nav').innerHTML=html;$('bottom').innerHTML=html;document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.tab)))}
 function show(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
@@ -347,32 +319,90 @@ function show(id){
 }
 function cloudMsg(t){$('cloudState').textContent=t;$('syncPill').textContent=t}
 function stateRef(){return atlasFirebase.db.collection('users').doc(user.uid).collection('atlas').doc('state')}
-function scheduleSave(){if(!user||saving)return;cloudMsg('Speichert...');clearTimeout(saveTimer);saveTimer=setTimeout(saveCloud,450)}
-async function saveCloud(){
-  if(!user)return;
+function scheduleSave(){
+  if(!user||!cloudReady)return;
+  cloudMsg('Speichert...');
   clearTimeout(saveTimer);
-  const snapshot=structuredClone(state);
-  snapshot.updatedAt=new Date().toISOString();
-  cloudWriteQueue=cloudWriteQueue.then(async()=>{
+  saveTimer=setTimeout(()=>{saveCloud().catch(console.error)},450);
+}
+async function saveCloud(){
+  if(!user||!cloudReady)return false;
+  saveQueued=true;
+  if(saving)return savePromise;
+
+  saving=true;
+  savePromise=(async()=>{
     try{
-      saving=true;
-      await stateRef().set(snapshot,{merge:false});
+      while(saveQueued){
+        saveQueued=false;
+        const savedAt=new Date().toISOString();
+        state.updatedAt=savedAt;
+        const payload=structuredClone(state);
+        payload.updatedAt=savedAt;
+        // Vollständigen State atomar ersetzen. So bleiben activeTrades, Journal und Settings konsistent.
+        await stateRef().set(payload);
+      }
       cloudMsg('Cloud synchronisiert');
+      return true;
     }catch(e){
       cloudMsg('Cloud Fehler');
-      console.error(e);
+      console.error('Atlas cloud save failed',e);
       throw e;
     }finally{
       saving=false;
     }
-  }).catch(()=>{});
-  return cloudWriteQueue;
+  })();
+  return savePromise;
 }
-function startCloud(uidVal){if(unsub)unsub();unsub=stateRef().onSnapshot(async snap=>{if(!snap.exists){state=normalizeState(state);await stateRef().set(state);return}const data=snap.data();state=normalizeState(data);if(selectedTradeId && !(state.activeTrades||[]).some(t=>t.id===selectedTradeId))selectedTradeId=null;renderAll();cloudMsg('Cloud synchronisiert')},err=>{console.error(err);cloudMsg('Cloud Fehler')})}
+async function startCloud(uidVal){
+  if(unsub){unsub();unsub=null}
+  cloudReady=false;
+  stopMarketEngine();
+  clearTimeout(saveTimer);
+  cloudMsg('Cloud wird geladen...');
+
+  const ref=stateRef();
+  try{
+    const first=await ref.get();
+    if(first.exists){
+      state=normalizeState(first.data());
+    }else{
+      state=normalizeState(structuredClone(defaultState));
+      state.updatedAt=new Date().toISOString();
+      await ref.set(structuredClone(state));
+    }
+
+    if(selectedTradeId && !(state.activeTrades||[]).some(t=>t.id===selectedTradeId))selectedTradeId=null;
+    cloudReady=true;
+    renderAll();
+    cloudMsg('Cloud synchronisiert');
+
+    unsub=ref.onSnapshot({includeMetadataChanges:true},snap=>{
+      if(!snap.exists||!cloudReady)return;
+      // Lokale Schreib-Echos nicht erneut als externen Zustand einspielen.
+      if(snap.metadata&&snap.metadata.hasPendingWrites)return;
+      const incoming=snap.data();
+      const remoteTime=String(incoming?.updatedAt||'');
+      const localTime=String(state?.updatedAt||'');
+      // Während noch lokale Änderungen gespeichert werden, darf kein älterer Snapshot den State überschreiben.
+      if((saving||saveQueued)&&remoteTime&&localTime&&remoteTime<localTime)return;
+      state=normalizeState(incoming);
+      if(selectedTradeId && !(state.activeTrades||[]).some(t=>t.id===selectedTradeId))selectedTradeId=null;
+      renderAll();
+      cloudMsg('Cloud synchronisiert');
+    },err=>{console.error(err);cloudMsg('Cloud Fehler')});
+
+    startMarketEngine();
+  }catch(err){
+    console.error('Atlas initial cloud load failed',err);
+    cloudReady=false;
+    cloudMsg('Cloud Fehler – Daten nicht überschrieben');
+  }
+}
 async function login(){try{await atlasFirebase.auth.signInWithEmailAndPassword($('authEmail').value.trim(),$('authPassword').value);$('authMsg').textContent=''}catch(e){$('authMsg').textContent=authError(e)}}
 async function register(){try{await atlasFirebase.auth.createUserWithEmailAndPassword($('authEmail').value.trim(),$('authPassword').value);$('authMsg').textContent=''}catch(e){$('authMsg').textContent=authError(e)}}
 function authError(e){console.error(e);if(e.code==='auth/email-already-in-use')return 'Diese E-Mail ist bereits registriert. Bitte anmelden.';if(e.code==='auth/invalid-credential'||e.code==='auth/wrong-password')return 'Anmeldung fehlgeschlagen. E-Mail oder Passwort prüfen.';if(e.code==='auth/weak-password')return 'Passwort muss mindestens 6 Zeichen haben.';return 'Fehler: '+(e.message||e.code)}
-atlasFirebase.auth.onAuthStateChanged(u=>{user=u;if(u){$('authScreen').classList.add('hidden');$('app').classList.remove('hidden');cloudMsg('Cloud verbunden');startCloud(u.uid);startMarketEngine()}else{$('authScreen').classList.remove('hidden');$('app').classList.add('hidden');if(unsub)unsub();stopMarketEngine()}});
+atlasFirebase.auth.onAuthStateChanged(u=>{user=u;if(u){$('authScreen').classList.add('hidden');$('app').classList.remove('hidden');cloudMsg('Cloud verbunden');startCloud(u.uid)}else{cloudReady=false;saveQueued=false;clearTimeout(saveTimer);$('authScreen').classList.remove('hidden');$('app').classList.add('hidden');if(unsub){unsub();unsub=null}stopMarketEngine()}});
 function renderAll(){safeRenderAll()}
 function blankTrade(){return {...tradeTemplate,id:uid(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}}
 function emptyTradeDraft(){
@@ -643,7 +673,6 @@ async function fetchMarketDataForTrade(p,{silent=false}={}){
       const quote=parseYahoo(await res.json());
       return{provider,quote};
     }));
-    if(locallyDeletedTradeIds.has(p.id)||!(state.activeTrades||[]).some(t=>t.id===p.id))return false;
     applyLivePrice(p,winner.quote,winner.provider.name);
     if(!silent&&currentTrade()?.id===p.id)$('liveMsg').textContent=`Live-Kurs aktualisiert · ${winner.provider.name} · ${new Date().toLocaleTimeString('de-DE')}`;
     return true;
@@ -655,7 +684,7 @@ async function fetchMarketDataForTrade(p,{silent=false}={}){
 }
 async function fetchYahoo(){const p=currentTrade();if(!p)return;$('liveMsg').textContent='Live-Kurs wird geladen...';setDataPill('Marktdaten laden','warn');const ok=await fetchMarketDataForTrade(p);setDataPill(ok?'Marktdaten live':'Marktdaten gestört',ok?'ok':'error');renderAll();if(ok)scheduleSave()}
 async function refreshAllMarketData(){
-  if(marketBusy||!user||document.hidden)return;
+  if(marketBusy||!user||!cloudReady||document.hidden)return;
   marketBusy=true;
   setDataPill('Marktdaten laden','warn');
   try{
@@ -676,7 +705,7 @@ async function refreshAllMarketData(){
     marketBusy=false;
   }
 }
-function startMarketEngine(){stopMarketEngine();setTimeout(refreshAllMarketData,1200);marketTimer=setInterval(refreshAllMarketData,MARKET_REFRESH_MS)}
+function startMarketEngine(){if(!cloudReady)return;stopMarketEngine();setTimeout(refreshAllMarketData,1200);marketTimer=setInterval(refreshAllMarketData,MARKET_REFRESH_MS)}
 function stopMarketEngine(){if(marketTimer)clearInterval(marketTimer);marketTimer=null;marketBusy=false}
 function renderTrades(){const arr=state.trades||[];$('tradeList').innerHTML=arr.map((t,i)=>{const pnl=tradePnlEuro(t);return `<div class="tradeRow"><div><b>${t.date} · ${t.market}</b><br>${t.direction} · ${t.closeType||'Abschluss'}${t.planDeviation?' · Planabweichung':''}${(t.deviations||[]).length?' · '+t.deviations.length+' dokumentierte Änderung(en)':''} · ${t.note||''}<br><small>Entry ${fmt(t.entry)} · Exit ${fmt(t.exit)} · ${t.result||0}P · ${t.contracts||1} Kontrakt(e) · ${euroShort(t.pointValue||1)}/P</small></div><div class="${pnl>=0?'plus':'minus'}">${euroShort(pnl)}</div><button data-deltrade="${i}">Löschen</button></div>`}).join('')||'<p>Noch keine beendeten Trades.</p>';document.querySelectorAll('[data-deltrade]').forEach(b=>b.addEventListener('click',()=>{state.trades.splice(Number(b.dataset.deltrade),1);renderTrades();renderChallenge();scheduleSave()}))}
 function brokerCloseStatus(p,current){if((p.positionStatus||'active')!=='active')return{mode:'pending',label:'Order geplant',exit:current,deviation:false};const dir=p.direction==='Long'?1:-1;const targetHit=dir===1?current>=num(p.target):current<=num(p.target);const stopHit=dir===1?current<=num(p.stop):current>=num(p.stop);if(targetHit)return{mode:'target',label:'Take-Profit erreicht',exit:num(p.target),deviation:false};if(stopHit)return{mode:'stop',label:'Stop-Loss erreicht',exit:num(p.stop),deviation:false};return{mode:'manual',label:'Trade läuft noch',exit:current,deviation:false}}
@@ -690,7 +719,7 @@ function milestoneDates(done){const trades=[...(state.trades||[])].reverse();let
 function renderChallenge(){const snap=challengeSnapshot();if($('accountStart'))$('accountStart').value=state.settings.accountStart||'';$('accountBalance').textContent=euroShort(snap.balance);$('journalProfit').textContent=euroShort(snap.pnl);$('wealthNow').textContent=snap.done+' / '+CHALLENGE_BOXES;$('wealthPct').textContent=snap.pct+'%';$('wealthOpen').textContent=euroShort(snap.open);$('nextMilestone').textContent=snap.done>=CHALLENGE_BOXES?'Ziel erreicht':euroShort(snap.next);const bar=$('wealthBar');if(bar)bar.style.width=snap.pct+'%';const dates=milestoneDates(snap.done);$('boxes').innerHTML=Array.from({length:CHALLENGE_BOXES},(_,i)=>{const n=i+1, amount=n*CHALLENGE_BOX_VALUE, done=n<=snap.done;return `<div class="box ${done?'done':''}"><b>${n}</b><span>${euroShort(amount)}</span><small>${done?(dates[n]||'erreicht'):''}</small></div>`}).join('')}
 function marketSelect(){const val=$('fMarketSelect').value;const m=markets.find(x=>x[0]===val);if(!m)return;if(val!=='CUSTOM'){$('fSymbol').value=m[0];$('fMarket').value=m[2]}}
 function clock(){$('clockPill').textContent=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}
-function boot(){makeNav();$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnNewTrade').onclick=startNewTrade;$('btnBackDesk').onclick=()=>{selectedTradeId=null;renderPlan();scrollTo(0,0)};$('btnEditTrade').onclick=editSelectedTrade;if($('btnDeleteActiveTrade'))$('btnDeleteActiveTrade').onclick=deleteActiveTrade;if($('closeMode'))$('closeMode').onchange=()=>renderPlan();if($('closePrice'))$('closePrice').oninput=()=>renderPlan();$('btnExportJournal').onclick=exportJournal;if($('btnSaveAccount'))$('btnSaveAccount').onclick=saveAccountBase;$('fMarketSelect').onchange=()=>{marketSelect();markFormDirty();renderDeviationPanel()};
+function boot(){makeNav();$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnNewTrade').onclick=startNewTrade;$('btnBackDesk').onclick=()=>{selectedTradeId=null;renderPlan();scrollTo(0,0)};$('btnEditTrade').onclick=editSelectedTrade;if($('closeMode'))$('closeMode').onchange=()=>renderPlan();if($('closePrice'))$('closePrice').oninput=()=>renderPlan();$('btnExportJournal').onclick=exportJournal;if($('btnSaveAccount'))$('btnSaveAccount').onclick=saveAccountBase;$('fMarketSelect').onchange=()=>{marketSelect();markFormDirty();renderDeviationPanel()};
   ['fMarket','fSymbol','fDirection','fPositionStatus','fContracts','fPointValue','fEntry','fStop','fTarget','fZone','fWhy','fRule'].forEach(id=>{
     const el=$(id);if(!el)return;
     el.addEventListener('input',()=>{markFormDirty();renderDeviationPanel()});
