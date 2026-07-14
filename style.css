@@ -438,3 +438,34 @@ button.dangerBtn:hover{
 /* V5.8.7 Stability Refactor – deterministic save state */
 #btnSavePlan:disabled{opacity:.62;cursor:wait;filter:saturate(.72)}
 .uploadBox input[type="file"]:disabled{opacity:.6}
+
+/* V5.8.7 Stability Refactor – Positionen und Orders getrennt */
+.brokerTradeSection{margin-top:18px}
+.brokerTradeSection+.brokerTradeSection{margin-top:22px}
+.brokerTradeSectionHeader{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 2px 10px;padding:0 2px}
+.brokerTradeSectionHeader>div{display:flex;align-items:center;gap:9px}
+.brokerTradeSectionHeader b{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#dce9fb}
+.brokerTradeSectionHeader small{min-width:28px;height:24px;display:grid;place-items:center;border:1px solid rgba(96,121,154,.5);border-radius:999px;background:rgba(16,29,48,.65);color:#bfd2ec;font-weight:800}
+.sectionStatusDot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.brokerTradeSection.orders .sectionStatusDot{background:var(--blue)}
+.brokerTradeSection.orders .brokerTradeSectionHeader b{color:#c9dcff}
+
+.activeTradeCard.orderCard{background:linear-gradient(180deg,rgba(20,38,62,.92),rgba(14,29,49,.94));border-color:rgba(87,123,177,.56)}
+.activeTradeCard.orderCard:hover{border-color:rgba(107,164,255,.82)}
+.activeTradeCard.orderCard .deskMeta strong{color:#9fc3ff}
+.activeTradeCard.orderCard .miniLamp.order{background:var(--blue);box-shadow:none}
+.activeTradeCard.positionCard{border-left-color:rgba(114,215,155,.68)}
+.activeTradeCard.orderCard{border-left-color:rgba(107,164,255,.8)}
+
+.tradeCardTitleLine{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tradeCardTitleLine>b{margin:0}
+.tradeTypeBadge{display:inline-flex!important;align-items:center;width:auto!important;margin:0!important;padding:4px 8px;border-radius:999px;font-size:10px!important;line-height:1!important;letter-spacing:.07em;text-transform:uppercase;font-weight:900}
+.tradeTypeBadge.position{color:#bdf4d1;background:rgba(114,215,155,.10);border:1px solid rgba(114,215,155,.32)}
+.tradeTypeBadge.order{color:#cbdcff;background:rgba(107,164,255,.11);border:1px solid rgba(107,164,255,.36)}
+
+@media(max-width:820px){
+  .brokerTradeSectionHeader{margin-top:2px}
+  .brokerTradeSectionHeader b{font-size:12px}
+  .tradeCardTitleLine{gap:7px}
+  .tradeTypeBadge{font-size:9px!important;padding:4px 7px}
+}
