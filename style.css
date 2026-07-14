@@ -573,3 +573,38 @@ button.dangerBtn:hover{
     padding:4px 7px!important;
   }
 }
+
+
+/* V5.8.7 – Mobile Market Names Fix V2
+   Spezifischer Override gegen ältere Premium/Mobile-Regeln */
+@media(max-width:820px){
+  .brokerAccountTrades .activeTradeCard > div:nth-child(2){
+    min-width:0!important;
+    overflow:visible!important;
+  }
+
+  .brokerAccountTrades .activeTradeCard > div:nth-child(2) > b{
+    font-size:15px!important;
+    line-height:1.15!important;
+    letter-spacing:-0.2px!important;
+    white-space:normal!important;
+    overflow:visible!important;
+    text-overflow:clip!important;
+    max-width:none!important;
+    width:auto!important;
+    display:block!important;
+    -webkit-line-clamp:unset!important;
+    -webkit-box-orient:unset!important;
+  }
+
+  /* Badge nicht mehr neben den Marktname quetschen */
+  .brokerAccountTrades .activeTradeCard .tradeTypeBadge{
+    display:inline-flex!important;
+    margin-left:0!important;
+    margin-top:4px!important;
+    font-size:8px!important;
+    line-height:1!important;
+    padding:3px 6px!important;
+    vertical-align:top!important;
+  }
+}
