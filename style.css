@@ -422,3 +422,15 @@ button.dangerBtn:hover{
     min-width:0;
   }
 }
+
+/* Brokerkonto-Gruppierung */
+.brokerAccountGroup{margin-top:18px}
+.brokerAccountGroup+.brokerAccountGroup{margin-top:24px;padding-top:22px;border-top:1px solid rgba(77,102,137,.55)}
+.brokerAccountHeader{display:flex;justify-content:space-between;align-items:center;gap:14px;margin:0 2px 10px}
+.brokerAccountHeader span{display:block;color:#8fa9cc;font-size:10px;text-transform:uppercase;letter-spacing:1.6px;margin-bottom:4px}
+.brokerAccountHeader b{display:block;color:#f5e7b4;font-size:17px}
+.brokerAccountHeader small{color:#9eb6d6;background:#122238;border:1px solid #334d6c;border-radius:999px;padding:6px 10px;white-space:nowrap}
+.brokerAccountTrades{display:grid;gap:12px}
+.tradeAccountTag{display:inline-block;margin-top:8px;padding:4px 8px;border:1px solid rgba(217,189,106,.35);background:rgba(217,189,106,.08);border-radius:999px;color:#d9bd6a;font-size:10px;font-style:normal;font-weight:700;letter-spacing:.2px}
+.journalAccountTag{display:inline-block;margin:5px 0 4px;padding:4px 8px;border:1px solid rgba(217,189,106,.32);background:rgba(217,189,106,.07);border-radius:999px;color:#d9bd6a;font-size:11px;font-weight:700}
+@media(max-width:820px){.brokerAccountHeader b{font-size:15px}.brokerAccountHeader small{font-size:10px}.tradeAccountTag{margin-top:7px}}
