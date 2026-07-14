@@ -29,7 +29,8 @@ function marketIdentity(trade){
 }
 function marketIconHtml(trade,size='normal'){
   const identity=marketIdentity(trade);
-  return `<span class="marketIdentity ${identity.className} ${size}" title="${escapeHtml(identity.title)}">${escapeHtml(identity.code)}</span>`;
+  return `<span class="marketIdentity ${size}" title="${escapeHtml(identity.title)}"><img src="market-icons/${escapeHtml(identity.className)}.png?v=5810-icons-centered-1" alt="${escapeHtml(identity.title)}"></span>`;
+} ${size}" title="${escapeHtml(identity.title)}">${escapeHtml(identity.code)}</span>`;
 }
 const CHALLENGE_BOX_VALUE=20000;
 const CHALLENGE_BOXES=50;
