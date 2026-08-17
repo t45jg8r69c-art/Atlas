@@ -1,10 +1,10 @@
-const CACHE_NAME = 'atlas-v5.9.4.1-statement-parsers-1';
+const CACHE_NAME = 'atlas-v5.9.4.2-financial-intelligence-1';
 const APP_SHELL = [
   './',
   './index.html',
-  './style.css?v=5941-statement-parsers-1',
-  './app.js?v=5941-statement-parsers-1',
-  './firebase.js?v=5941-statement-parsers-1',
+  './style.css?v=5942-financial-intelligence-1',
+  './app.js?v=5942-financial-intelligence-1',
+  './firebase.js?v=5942-financial-intelligence-1',
   './manifest.webmanifest',
   './offline.html',
   './icons/apple-touch-icon.png',
