@@ -68,7 +68,7 @@ const defaultState={
 };
 let state=structuredClone(defaultState), user=null, unsub=null, saving=false, saveQueued=false, savePromise=Promise.resolve(), saveTimer=null, cloudReady=false, selectedTradeId=null, lastLiveById={}, marketTimer=null, marketBusy=false, formDraft=null, formDirty=false, formMode='none', imageJobs={hkcm:null,tv:null};
 let currentScreen='home', navigationHistory=[];
-let monthlyReviewCache={month:null,statements:{},loading:false};
+let monthlyReviewCache={month:null,statements:{},decisions:{},loading:false};
 const $=id=>document.getElementById(id);
 function fmt(n){const x=Number(n);return Number.isFinite(x)?x.toLocaleString('de-DE',{maximumFractionDigits:2}):'-'}
 function num(v){return Number(String(v??'').replace(',','.'))}
@@ -529,7 +529,7 @@ function makeNav(){
   document.querySelectorAll('[data-alpha-target]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.alphaTarget)));
   document.querySelectorAll('[data-main-target]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.mainTarget)));
   document.querySelectorAll('[data-atlas-back]').forEach(b=>b.addEventListener('click',goBack));
-  if($('reviewMonth'))$('reviewMonth').addEventListener('change',()=>{monthlyReviewCache={month:null,statements:{},loading:false};renderMonthlyReview();});
+  if($('reviewMonth'))$('reviewMonth').addEventListener('change',()=>{monthlyReviewCache={month:null,statements:{},decisions:{},loading:false};renderMonthlyReview();});
 }
 function show(id,options={}){
   const next=$(id)?id:'home';
@@ -600,9 +600,10 @@ function renderAccountList(){
   const list=[...(wealthSetup().accounts||[])];
   if(!list.length){$('accountList').innerHTML='<div class="setupEmpty">Noch keine Konten eingerichtet.</div>';return;}
   const active=list.filter(a=>a.status!=='archived'), archived=list.filter(a=>a.status==='archived');
-  const row=a=>`<div class="setupAccountRow ${a.status==='archived'?'archived':''}"><div><b>${escapeHtml(a.name||'Konto')}</b><span>${escapeHtml(a.provider||'')} · ${escapeHtml(accountRoleLabel(a.role))}${a.identifier?' · ••••'+escapeHtml(String(a.identifier).slice(-4)):''}</span></div><button class="smallBtn" data-account-toggle="${escapeHtml(a.id)}" type="button">${a.status==='archived'?'Reaktivieren':'Archivieren'}</button></div>`;
+  const row=a=>{const freq=a.updateFrequency||'monthly';const freqLabel={monthly:'Monatlich',annual:'Jährlich',manual:'Manuell'}[freq]||'Monatlich';return `<div class="setupAccountRow ${a.status==='archived'?'archived':''}"><div><b>${escapeHtml(a.name||'Konto')}</b><span>${escapeHtml(a.provider||'')} · ${escapeHtml(accountRoleLabel(a.role))}${a.identifier?' · ••••'+escapeHtml(String(a.identifier).slice(-4)):''} · ${freqLabel}</span></div><div class="setupAccountActions"><button class="smallBtn" data-account-frequency="${escapeHtml(a.id)}" type="button">${freqLabel}</button><button class="smallBtn" data-account-toggle="${escapeHtml(a.id)}" type="button">${a.status==='archived'?'Reaktivieren':'Archivieren'}</button></div></div>`};
   $('accountList').innerHTML=active.map(row).join('')+(archived.length?`<div class="setupArchivedLabel">Archiviert</div>${archived.map(row).join('')}`:'');
   document.querySelectorAll('[data-account-toggle]').forEach(b=>b.onclick=()=>toggleAccountStatus(b.dataset.accountToggle));
+  document.querySelectorAll('[data-account-frequency]').forEach(b=>b.onclick=()=>cycleAccountFrequency(b.dataset.accountFrequency));
 }
 function toggleAccountForm(showForm=true){
   const form=$('accountForm'); if(!form)return;
@@ -613,6 +614,7 @@ function toggleAccountForm(showForm=true){
 function clearAccountForm(){
   ['accountName','accountProvider','accountIdentifier','accountOpeningBalance'].forEach(id=>{if($(id))$(id).value=''});
   if($('accountRole'))$('accountRole').value='CASH';
+  if($('accountFrequency'))$('accountFrequency').value='monthly';
   if($('accountOpeningDate'))$('accountOpeningDate').value=new Date().toISOString().slice(0,10);
 }
 function addAccount(){
@@ -627,11 +629,20 @@ function addAccount(){
     identifier:String($('accountIdentifier')?.value||'').trim(),
     openingBalance:setupNumber('accountOpeningBalance',0),
     openingDate:$('accountOpeningDate')?.value||new Date().toISOString().slice(0,10),
+    updateFrequency:$('accountFrequency')?.value||'monthly',
     status:'active',
     createdAt:new Date().toISOString()
   }];
   state.wealthSetup=ws; clearAccountForm(); toggleAccountForm(false); renderAccountList(); scheduleSave();
 }
+
+function cycleAccountFrequency(id){
+  const ws=wealthSetup(), order=['monthly','annual','manual'];
+  ws.accounts=(ws.accounts||[]).map(a=>{if(a.id!==id)return a;const cur=a.updateFrequency||'monthly';return{...a,updateFrequency:order[(order.indexOf(cur)+1)%order.length],updatedAt:new Date().toISOString()};});
+  state.wealthSetup=ws; renderAccountList(); scheduleSave(); renderMonthlyReview();
+}
+function accountFrequencyLabel(freq){return({monthly:'Monatlich',annual:'Jährlich',manual:'Manuell'})[freq||'monthly']||'Monatlich'}
+
 function toggleAccountStatus(id){
   const ws=wealthSetup(), now=new Date().toISOString();
   ws.accounts=(ws.accounts||[]).map(a=>a.id===id?{...a,status:a.status==='archived'?'active':'archived',statusChangedAt:now}:a);
@@ -685,15 +696,16 @@ async function statementHash(file){
 }
 async function loadMonthlyReview(month){
   if(!user)return{};
-  monthlyReviewCache={month,statements:{},loading:true};
+  monthlyReviewCache={month,statements:{},decisions:{},loading:true};
   try{
     const snap=await reviewDocRef(month).get();
-    const docs=snap.exists&&snap.data()?.statements?snap.data().statements:{};
-    monthlyReviewCache={month,statements:docs,loading:false};
+    const data=snap.exists?snap.data()||{}:{};
+    const docs=data.statements||{}, decisions=data.decisions||{};
+    monthlyReviewCache={month,statements:docs,decisions,loading:false};
     return docs;
   }catch(e){
     console.error('Monthly review load failed',e);
-    monthlyReviewCache={month,statements:{},loading:false,error:e};
+    monthlyReviewCache={month,statements:{},decisions:{},loading:false,error:e};
     return{};
   }
 }
@@ -743,8 +755,39 @@ function extractBankTransactions(text){
   }
   return out;
 }
+const CASHFLOW_CATEGORIES={
+  HOUSING:'Wohnen',FOOD:'Lebensmittel',MOBILITY:'Mobilität',INSURANCE:'Versicherungen',LIFESTYLE:'Freizeit / Lifestyle',TRAVEL:'Reisen',OTHER:'Sonstiges',INVESTMENT:'Investment',TAX:'Steuern',INCOME:'Einkommen',TRANSFER:'Transfer'
+};
+function normalizeMerchant(desc){
+  return String(desc||'').toUpperCase().replace(/\b(PN|EREF|MREF|CRED|IBAN|BIC|DEU|EUR)[:\s].*$/i,'').replace(/\d{2}\.\d{2}\.?/g,' ').replace(/[^A-ZÄÖÜß0-9 ]/g,' ').replace(/\s+/g,' ').trim().slice(0,60);
+}
+function learnedCategory(desc){
+  const rules=wealthSetup().categoryRules||{}; const n=normalizeMerchant(desc);
+  let best=null;
+  Object.entries(rules).forEach(([key,val])=>{if(key&&n.includes(key)&&(!best||key.length>best.key.length))best={key,...val};});
+  return best?.category||null;
+}
+function autoExpenseCategory(desc){
+  const d=String(desc||''); const learned=learnedCategory(d); if(learned)return learned;
+  if(/REWE|LIDL|E-CENTER|EDEKA|ALDI|PLODINE|INTERSPAR|SUPERMARKET|ROSSMANN|FAMILIA|MARE TRGOVINA/i.test(d))return'FOOD';
+  if(/MIETE|NEBENKOSTEN|STROM|GAS|WASSER|HAUSVERWALT|TELEKOM|INTERNET/i.test(d))return'HOUSING';
+  if(/ASFINAG|TANK|SHELL|ARAL|INA BP|BAHN|DB VERTRIEB|PARK|TAXI|UBER/i.test(d))return'MOBILITY';
+  if(/VERSICHER|ALLIANZ|HUK|AXA|DEVK|ERGO/i.test(d))return'INSURANCE';
+  if(/BOOKING|AIRBNB|LUFTHANSA|RYANAIR|JADROLINIJA|HOTEL|FLUG/i.test(d))return'TRAVEL';
+  if(/BURGER KING|FITNESS|WELLUNDFIT|YOUTUBE|OPENAI|CHATGPT|AMAZON|KINO|NETFLIX|SPOTIFY/i.test(d))return'LIFESTYLE';
+  return'OTHER';
+}
+function isNecessaryCategory(category){return['HOUSING','FOOD','MOBILITY','INSURANCE'].includes(category)}
+function reviewItemId(accountId,item){return `${accountId}|${item.date||''}|${item.direction||''}|${Number(item.amount||0).toFixed(2)}|${normalizeMerchant(item.description||item.label||'').slice(0,28)}`}
+function decisionLabel(v){return({income:'Einkommen',transfer:'Transfer',exceptional:'Sondereffekt',tax:'Steuern'})[v]||v}
+
 function classifyBankTransaction(tx){
   const d=String(tx?.description||'');
+  const learned=learnedCategory(d);
+  if(learned==='TRANSFER')return{kind:'transfer',reason:'Gelernter Transfer'};
+  if(learned==='TAX')return{kind:'exceptional',reason:'Gelernte Steuerbuchung'};
+  if(learned==='INCOME')return{kind:'income',reason:'',category:'INCOME'};
+  if(learned==='OTHER')return{kind:tx.direction==='H'?'income':'expense',reason:'',category:'OTHER'};
   // Interne Vermögensverschiebungen / Investments. Diese dürfen den Konsum-Cashflow nicht doppelt belasten.
   if(/Master\/Visacard|VISA\s+Abrechnung|Kreditkartensaldo/i.test(d))return{kind:'transfer',reason:'Kreditkarten-Ausgleich'};
   if(/Rücklage|Tagesgeld|Sparkonto/i.test(d))return{kind:'transfer',reason:'Rücklage'};
@@ -755,36 +798,39 @@ function classifyBankTransaction(tx){
   if(/\bEinzahlung\b/i.test(d)&&tx.direction==='H')return{kind:'review',reason:'Herkunft der Einzahlung prüfen'};
   // Steuerzahlungen/-erstattungen sind echte Geldflüsse, aber für die spätere Allokation typischerweise außergewöhnlich.
   if(/Finanzamt|Finanzkasse|Steuer|UMS\.ST|Einkommensteuer/i.test(d))return{kind:'exceptional',reason:'Steuer / außergewöhnlicher Geldfluss'};
-  return{kind:tx.direction==='H'?'income':'expense',reason:''};
+  return tx.direction==='H'?{kind:'income',reason:'',category:'INCOME'}:{kind:'expense',reason:'',category:autoExpenseCategory(d)};
 }
 function analyzeBankStatement(text){
   const opening=firstMoneyMatch(text,[/alter\s+Kontostand(?:\s+vom\s+\d{2}\.\d{2}\.\d{4})?\s+([\d.]+,\d{2}\s*[HS]?)/i,/Anfangssaldo[^\d]{0,40}([\d.]+,\d{2}\s*[HS]?)/i]);
   const closing=firstMoneyMatch(text,[/neuer\s+Kontostand(?:\s+vom\s+\d{2}\.\d{2}\.\d{4})?\s+([\d.]+,\d{2}\s*[HS]?)/i,/Endsaldo[^\d]{0,40}([\d.]+,\d{2}\s*[HS]?)/i]);
   let income=0,expenses=0,incomeCount=0,expenseCount=0,transferHits=0;
-  const reviewItems=[];
+  const reviewItems=[], categorized=[];
   const transactions=extractBankTransactions(text);
   for(const tx of transactions){
     const c=classifyBankTransaction(tx);
-    if(c.kind==='transfer'){transferHits++;continue;}
+    if(c.kind==='transfer'){transferHits++;categorized.push({...tx,kind:'transfer',category:'TRANSFER'});continue;}
     if(c.kind==='review'){
-      reviewItems.push({label:c.reason,amount:tx.amount,direction:tx.direction,description:tx.description});
-      continue;
+      reviewItems.push({label:c.reason,amount:tx.amount,direction:tx.direction,description:tx.description,date:tx.date,suggested:'transfer'});
+      categorized.push({...tx,kind:'review',category:null}); continue;
     }
-    if(c.kind==='exceptional')reviewItems.push({label:c.reason,amount:tx.amount,direction:tx.direction,description:tx.description});
+    if(c.kind==='exceptional'){
+      reviewItems.push({label:c.reason,amount:tx.amount,direction:tx.direction,description:tx.description,date:tx.date,suggested:'tax'});
+      categorized.push({...tx,kind:'exceptional',category:'TAX'});
+    }else categorized.push({...tx,kind:c.kind,category:c.category||null});
     if(tx.direction==='H'){income+=tx.amount;incomeCount++;}else{expenses+=tx.amount;expenseCount++;}
   }
-  return{opening,closing,income:incomeCount?income:null,expenses:expenseCount?expenses:null,transferHits,reviewItems,transactions,confidence:closing!=null?'high':'medium'};
+  return{opening,closing,income:incomeCount?income:null,expenses:expenseCount?expenses:null,transferHits,reviewItems,transactions:categorized,confidence:closing!=null?'high':'medium'};
 }
 function analyzeCreditCard(text){
   const opening=firstMoneyMatch(text,[/Saldo\s+Vormonat\s+([\d.]+,\d{2})\s*-/i]);
   let closing=firstMoneyMatch(text,[/(?:^|\s)Saldo\s+([\d.]+,\d{2})\s*-/i,/Zwischensaldo\s+([\d.]+,\d{2})\s*-/i]);
   if(closing!=null)closing=-Math.abs(closing);
-  let expenses=0,count=0;
-  const re=/\d{2}\.\d{2}\.\s+\d{2}\.\d{2}\.\s+(.{1,160}?)\s+([\d.]+,\d{2})([+\-])/g;
+  let expenses=0,count=0; const transactions=[];
+  const re=/(\d{2}\.\d{2}\.)\s+\d{2}\.\d{2}\.\s+(.{1,160}?)\s+([\d.]+,\d{2})([+\-])/g;
   let m;while((m=re.exec(text))){
-    if(m[3]==='-'&&!/Saldo\s+Vormonat/i.test(m[1])){expenses+=Math.abs(parseStatementMoney(m[2])||0);count++;}
+    if(m[4]==='-'&&!/Saldo\s+Vormonat/i.test(m[2])){const amount=Math.abs(parseStatementMoney(m[3])||0);expenses+=amount;count++;transactions.push({date:m[1],description:m[2],amount,direction:'S',kind:'expense',category:autoExpenseCategory(m[2])});}
   }
-  return{opening:opening==null?null:-Math.abs(opening),closing,income:null,expenses:count?expenses:(closing!=null?Math.abs(closing):null),transferHits:(text.match(/Ausgleich\s+Kreditkartensaldo/gi)||[]).length,reviewItems:[],confidence:closing!=null?'high':'medium'};
+  return{opening:opening==null?null:-Math.abs(opening),closing,income:null,expenses:count?expenses:(closing!=null?Math.abs(closing):null),transferHits:(text.match(/Ausgleich\s+Kreditkartensaldo/gi)||[]).length,reviewItems:[],transactions,confidence:closing!=null?'high':'medium'};
 }
 function analyzeDepot(text){
   let closing=firstMoneyMatch(text,[/Depotwert\s+gesamt\s+([\d.]+,\d{2})\s*€/i,/Gesamtdepot\s+in\s+EUR\s+([\d.]+,\d{2})\s*€/i]);
@@ -796,11 +842,11 @@ function analyzeDepot(text){
     while((m=re.exec(header))){const v=parseStatementMoney(m[1]);if(v!=null&&v>0)vals.push(v);}
     if(vals.length)closing=Math.max(...vals);
   }
-  return{opening:null,closing,income:null,expenses:null,transferHits:0,reviewItems:[],confidence:closing!=null?'high':'low'};
+  return{opening:null,closing,income:null,expenses:null,transferHits:0,reviewItems:[],transactions:[],confidence:closing!=null?'high':'low'};
 }
 function analyzeMetals(text){
   const closing=firstMoneyMatch(text,[/GESAMT\s*LAGERWERT\s+([\d.]+,\d{2})\s*€/i,/Gesamtlagerwert\s+([\d.]+,\d{2})\s*€/i,/Gesamt\s+\d+\s+[\d.,]+\s*g\s+([\d.]+,\d{2})\s*€/i]);
-  return{opening:null,closing,income:null,expenses:null,transferHits:0,reviewItems:[],confidence:closing!=null?'high':'low'};
+  return{opening:null,closing,income:null,expenses:null,transferHits:0,reviewItems:[],transactions:[],confidence:closing!=null?'high':'low'};
 }
 function analyzeStatement(doc,account){
   const text=String(doc?.text||'').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim();
@@ -810,64 +856,129 @@ function analyzeStatement(doc,account){
   else if(type==='creditcard')result=analyzeCreditCard(text);
   else if(type==='depot')result=analyzeDepot(text);
   else if(type==='metals')result=analyzeMetals(text);
-  else result={opening:null,closing:null,income:null,expenses:null,transferHits:0,reviewItems:[],confidence:'low'};
+  else result={opening:null,closing:null,income:null,expenses:null,transferHits:0,reviewItems:[],transactions:[],confidence:'low'};
   return{...result,type};
 }
 function euroExact(v){return v==null?'–':Number(v).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'}
+function effectiveDecision(accountId,item){return monthlyReviewCache.decisions?.[reviewItemId(accountId,item)]||null}
+function transactionWithDecision(accountId,tx){
+  if(tx.kind!=='review'&&tx.kind!=='exceptional')return tx;
+  const item={...tx,label:tx.kind==='review'?'Herkunft der Einzahlung prüfen':'Steuer / außergewöhnlicher Geldfluss'};
+  const decision=effectiveDecision(accountId,item);
+  if(!decision)return tx;
+  if(decision.type==='transfer')return{...tx,kind:'transfer',category:'TRANSFER'};
+  if(decision.type==='income')return{...tx,kind:'income',category:'INCOME',direction:'H'};
+  if(decision.type==='tax')return{...tx,kind:'exceptional',category:'TAX'};
+  if(decision.type==='exceptional')return{...tx,kind:'exceptional',category:'OTHER'};
+  return tx;
+}
+function categoryTotals(rows){
+  const totals={}; let necessary=0;
+  rows.forEach(r=>(r.analysis.transactions||[]).forEach(raw=>{
+    const tx=transactionWithDecision(r.account.id,raw);
+    if(tx.direction!=='S'||['transfer','review'].includes(tx.kind))return;
+    const cat=tx.category||'OTHER'; totals[cat]=(totals[cat]||0)+Number(tx.amount||0);
+    if(isNecessaryCategory(cat))necessary+=Number(tx.amount||0);
+  }));
+  return{totals,necessary};
+}
+function cashflowTotals(rows){
+  let income=0,expenses=0,incomeCount=0,expenseCount=0,transfers=0;
+  rows.forEach(r=>{let txTransfers=0;(r.analysis.transactions||[]).forEach(raw=>{
+    const tx=transactionWithDecision(r.account.id,raw);
+    if(tx.kind==='transfer'){transfers++;txTransfers++;return;}
+    if(tx.kind==='review')return;
+    if(tx.direction==='H'){income+=Number(tx.amount||0);incomeCount++;}
+    else if(tx.direction==='S'){expenses+=Number(tx.amount||0);expenseCount++;}
+  });transfers+=Math.max(0,Number(r.analysis.transferHits||0)-txTransfers);});
+  return{income,expenses,transfers,incomeCount,expenseCount};
+}
+function unresolvedReviewItems(rows){
+  const items=[];
+  rows.forEach(r=>(r.analysis.reviewItems||[]).forEach(item=>{
+    const id=reviewItemId(r.account.id,item); if(monthlyReviewCache.decisions?.[id])return;
+    items.push({...item,id,accountId:r.account.id,account:r.account.name,suggested:item.suggested||'exceptional'});
+  }));
+  return items;
+}
+function renderCategorySummary(rows){
+  const box=$('reviewCategorySummary'); if(!box)return;
+  const {totals,necessary}=categoryTotals(rows); const entries=Object.entries(totals).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+  if(!entries.length){box.classList.add('hidden');box.innerHTML='';return;}
+  const months=Number(wealthSetup().strategy?.reserveMonths||6);
+  box.classList.remove('hidden');
+  box.innerHTML=`<div class="reviewMiniHead"><div><span>Kategorien</span><b>Ausgaben verstanden</b></div><div class="reserveBasis"><span>Notwendige Ausgaben</span><b>${euroExact(necessary)}</b><small>Reservebasis aktuell: ${euroExact(necessary*months)} · ${months} Monate</small></div></div><div class="categoryChips">${entries.map(([cat,val])=>`<div><span>${escapeHtml(CASHFLOW_CATEGORIES[cat]||cat)}</span><b>${euroExact(val)}</b></div>`).join('')}</div><p class="reviewAnalysisHint">Die Reservebasis nutzt aktuell diesen Review. Mit mehreren abgeschlossenen Monaten kann ATLAS später einen stabileren Durchschnitt bilden.</p>`;
+}
+function renderReviewChecks(rows){
+  const box=$('reviewChecks'); if(!box)return; const items=unresolvedReviewItems(rows);
+  if(!items.length){box.classList.add('hidden');box.innerHTML='';return;}
+  box.classList.remove('hidden');
+  box.innerHTML=`<div class="reviewChecksHead"><div><span>Prüfung</span><b>${items.length} ${items.length===1?'Buchung':'Buchungen'} kurz bestätigen</b></div></div>`+items.slice(0,6).map(item=>{
+    const suggestion=item.suggested==='tax'?'Steuern':item.suggested==='transfer'?'Transfer':'Sondereffekt';
+    return `<div class="reviewCheckRow"><div class="reviewCheckInfo"><b>${escapeHtml(item.label)}</b><span>${escapeHtml(item.account)} · ${item.direction==='H'?'+':'−'}${euroExact(item.amount)}</span><small>${escapeHtml(statementSnippet(item.description,115))}</small></div><div class="reviewDecisionButtons"><button class="smallBtn ${item.suggested==='tax'?'recommended':''}" data-review-decision="${escapeHtml(item.id)}" data-review-type="tax" data-review-account="${escapeHtml(item.accountId)}" type="button">Steuern</button><button class="smallBtn ${item.suggested==='transfer'?'recommended':''}" data-review-decision="${escapeHtml(item.id)}" data-review-type="transfer" data-review-account="${escapeHtml(item.accountId)}" type="button">Transfer</button><button class="smallBtn" data-review-decision="${escapeHtml(item.id)}" data-review-type="income" data-review-account="${escapeHtml(item.accountId)}" type="button">Einkommen</button><button class="smallBtn" data-review-decision="${escapeHtml(item.id)}" data-review-type="exceptional" data-review-account="${escapeHtml(item.accountId)}" type="button">Sondereffekt</button></div></div>`;
+  }).join('');
+  document.querySelectorAll('[data-review-decision]').forEach(btn=>btn.onclick=()=>saveReviewDecision(btn.dataset.reviewDecision,btn.dataset.reviewType,btn.dataset.reviewAccount));
+}
+async function saveReviewDecision(id,type,accountId){
+  if(!user||!id)return; const month=$('reviewMonth')?.value||currentMonthKey();
+  const decisions={...(monthlyReviewCache.decisions||{}),[id]:{type,decidedAt:new Date().toISOString()}};
+  monthlyReviewCache.decisions=decisions;
+  try{
+    await reviewDocRef(month).set({month,statements:monthlyReviewCache.statements||{},decisions,updatedAt:new Date().toISOString()},{merge:true});
+    // Merchant-Lernregel nur speichern, wenn aus der Buchung ein brauchbarer Gegenpart ableitbar ist.
+    const rows=reviewActiveAccounts().filter(a=>a.role!=='ALPHA'&&monthlyReviewCache.statements?.[a.id]).map(a=>({account:a,analysis:analyzeStatement(monthlyReviewCache.statements[a.id],a)}));
+    const item=rows.flatMap(r=>(r.analysis.reviewItems||[]).map(x=>({...x,accountId:r.account.id}))).find(x=>reviewItemId(x.accountId,x)===id);
+    if(item){const key=normalizeMerchant(item.description);if(key.length>=5&&!/^EINZAHLUNG/.test(key)){const ws=wealthSetup();ws.categoryRules={...(ws.categoryRules||{}),[key]:{category:type==='tax'?'TAX':type==='transfer'?'TRANSFER':type==='income'?'INCOME':'OTHER',updatedAt:new Date().toISOString()}};state.wealthSetup=ws;scheduleSave();}}
+    paintMonthlyReview(month,monthlyReviewCache.statements||{});
+  }catch(e){console.error(e);if($('reviewMsg'))$('reviewMsg').textContent='Entscheidung konnte nicht gespeichert werden.';}
+}
 function renderFinancialIntelligence(docs={}){
   const card=$('reviewAnalysis'),grid=$('reviewAnalysisGrid'),hint=$('reviewAnalysisHint'),pill=$('analysisConfidence'); if(!card||!grid)return;
   const accounts=reviewActiveAccounts().filter(a=>a.role!=='ALPHA'&&docs[a.id]);
   if(!accounts.length){card.classList.add('hidden');return;}
   card.classList.remove('hidden');
   const rows=accounts.map(a=>({account:a,analysis:analyzeStatement(docs[a.id],a)}));
-  const knownIncome=rows.filter(r=>r.analysis.income!=null); const knownExpenses=rows.filter(r=>r.analysis.expenses!=null);
-  const income=knownIncome.reduce((s,r)=>s+r.analysis.income,0), expenses=knownExpenses.reduce((s,r)=>s+r.analysis.expenses,0);
-  const cashflow=(knownIncome.length&&knownExpenses.length)?income-expenses:null;
-  const transfers=rows.reduce((s,r)=>s+(r.analysis.transferHits||0),0);
-  const reviewItems=rows.flatMap(r=>(r.analysis.reviewItems||[]).map(x=>({...x,account:r.account.name})));
-  const provisional=reviewItems.length>0;
-  grid.innerHTML=`<div><span>Einnahmen</span><b>${knownIncome.length?euroExact(income):'Noch nicht erkannt'}</b></div><div><span>Ausgaben</span><b>${knownExpenses.length?euroExact(expenses):'Noch nicht erkannt'}</b></div><div><span>${provisional?'Überschuss · vorläufig':'Überschuss'}</span><b>${cashflow!=null?euroExact(cashflow):'Noch offen'}</b></div><div><span>Interne Transfers</span><b>${transfers||'Keine erkannt'}</b></div>`+rows.map(r=>`<div class="analysisAccount"><span>${escapeHtml(r.account.name)}</span><b>${r.analysis.closing!=null?euroExact(r.analysis.closing):'Wert nicht sicher erkannt'}</b><small>${r.analysis.opening!=null?'Start '+euroExact(r.analysis.opening)+' · ':''}${r.analysis.confidence==='high'?'hohe':r.analysis.confidence==='medium'?'mittlere':'geringe'} Erkennung</small></div>`).join('');
-  const lows=rows.filter(r=>r.analysis.confidence==='low').length;
-  if(pill)pill.textContent=lows?'Prüfung nötig':reviewItems.length?`${reviewItems.length} Prüfung${reviewItems.length===1?'':'en'}`:'Automatisch erkannt';
+  const cf=cashflowTotals(rows), cashflow=(cf.incomeCount&&cf.expenseCount)?cf.income-cf.expenses:null;
+  const unresolved=unresolvedReviewItems(rows), lows=rows.filter(r=>r.analysis.confidence==='low').length;
+  grid.innerHTML=`<div><span>Einnahmen</span><b>${cf.incomeCount?euroExact(cf.income):'Noch nicht erkannt'}</b></div><div><span>Ausgaben</span><b>${cf.expenseCount?euroExact(cf.expenses):'Noch nicht erkannt'}</b></div><div><span>${unresolved.length?'Überschuss · vorläufig':'Überschuss'}</span><b>${cashflow!=null?euroExact(cashflow):'Noch offen'}</b></div><div><span>Interne Transfers</span><b>${cf.transfers||'Keine erkannt'}</b></div>`+rows.map(r=>`<div class="analysisAccount"><span>${escapeHtml(r.account.name)}</span><b>${r.analysis.closing!=null?euroExact(r.analysis.closing):'Wert nicht sicher erkannt'}</b><small>${r.analysis.opening!=null?'Start '+euroExact(r.analysis.opening)+' · ':''}${r.analysis.confidence==='high'?'hohe':r.analysis.confidence==='medium'?'mittlere':'geringe'} Erkennung</small></div>`).join('');
+  if(pill)pill.textContent=lows?'Prüfung nötig':unresolved.length?`${unresolved.length} Prüfung${unresolved.length===1?'':'en'}`:'Geprüft ✓';
   if(hint){
     if(lows)hint.textContent='ATLAS zeigt nur Werte, die im Auszug eindeutig gefunden wurden. Nicht sicher erkannte Werte werden bewusst nicht geschätzt.';
-    else if(reviewItems.length){
-      const preview=reviewItems.slice(0,3).map(x=>`${x.label}: ${euroExact(x.amount)}`).join(' · ');
-      hint.textContent=`${transfers} interne Transfer${transfers===1?'':'s'} wurden aus dem Cashflow herausgerechnet. Prüfung nötig: ${preview}${reviewItems.length>3?' · …':''}. Der Überschuss ist bis zur Kategorisierung vorläufig.`;
-    }else hint.textContent=`Die wichtigsten Monatswerte wurden automatisch erkannt. ${transfers?`${transfers} interne Transfer${transfers===1?'':'s'} wurden aus dem Cashflow herausgerechnet.`:'Keine internen Transfers erkannt.'}`;
+    else if(unresolved.length)hint.textContent=`${cf.transfers} interne Transfer${cf.transfers===1?'':'s'} wurden herausgerechnet. Bestätige nur die ${unresolved.length} ungewöhnlichen Buchung${unresolved.length===1?'':'en'} unten.`;
+    else hint.textContent=`Monat geprüft. ${cf.transfers?`${cf.transfers} interne Transfer${cf.transfers===1?'':'s'} wurden aus dem Cashflow herausgerechnet.`:'Keine internen Transfers erkannt.'}`;
   }
+  renderCategorySummary(rows); renderReviewChecks(rows);
 }
-
+function accountRequiredThisMonth(a){return a.role==='ALPHA'||(a.updateFrequency||'monthly')==='monthly'}
 function paintMonthlyReview(month,docs={}){
   const listEl=$('reviewAccountList'); if(!listEl)return;
   const accounts=reviewActiveAccounts();
   if(!accounts.length){
     listEl.innerHTML='<div class="setupEmpty">Noch keine Konten eingerichtet. Richte zuerst deine Finanzwelt im Financial Setup ein.</div>';
-    if($('reviewProgressText'))$('reviewProgressText').textContent='0 / 0';
-    if($('reviewProgressHint'))$('reviewProgressHint').textContent='Keine Konten';
-    if($('reviewProgressBar'))$('reviewProgressBar').style.width='0%';
-    return;
+    if($('reviewProgressText'))$('reviewProgressText').textContent='0 / 0'; if($('reviewProgressHint'))$('reviewProgressHint').textContent='Keine Konten'; if($('reviewProgressBar'))$('reviewProgressBar').style.width='0%'; return;
   }
-  const done=accounts.filter(a=>a.role==='ALPHA'||docs[a.id]).length;
-  const pct=Math.round(done/accounts.length*100);
-  if($('reviewProgressText'))$('reviewProgressText').textContent=`${done} / ${accounts.length}`;
-  if($('reviewProgressHint'))$('reviewProgressHint').textContent=done===accounts.length?'Monatsdaten vollständig':'Konten aktualisiert';
+  const required=accounts.filter(accountRequiredThisMonth); const done=required.filter(a=>a.role==='ALPHA'||docs[a.id]).length; const pct=required.length?Math.round(done/required.length*100):100;
+  if($('reviewProgressText'))$('reviewProgressText').textContent=`${done} / ${required.length}`;
+  if($('reviewProgressHint'))$('reviewProgressHint').textContent=done===required.length?'Monatsdaten vollständig':'Konten aktualisiert';
   if($('reviewProgressBar'))$('reviewProgressBar').style.width=pct+'%';
   listEl.innerHTML=accounts.map(a=>{
-    const doc=docs[a.id]; const alpha=a.role==='ALPHA';
-    const detail=alpha?'Tradingdaten direkt aus ATLAS':doc?`${escapeHtml(doc.fileName||'PDF')} · ${formatFileSize(doc.fileSize)}`:`${escapeHtml(a.provider||accountRoleLabel(a.role))} · ${escapeHtml(reviewRoleHint(a.role))}`;
-    const action=alpha?'<span class="reviewAuto">✓ automatisch</span>':`<label class="secondary reviewUploadBtn">${doc?'PDF ersetzen':'PDF hinzufügen'}<input type="file" accept="application/pdf,.pdf" data-statement-account="${escapeHtml(a.id)}"></label>${doc?`<button class="reviewRemove" type="button" data-statement-remove="${escapeHtml(a.id)}">Entfernen</button>`:''}`;
-    return `<div class="reviewAccountRow"><div class="reviewAccountInfo"><b>${escapeHtml(a.name||'Konto')}</b><span class="reviewFileName">${detail}</span></div><div class="reviewAccountActions"><span class="reviewState ${alpha||doc?'done':''}">${alpha||doc?'Aktuell':'Fehlt'}</span>${action}</div></div>`;
+    const doc=docs[a.id], alpha=a.role==='ALPHA', freq=a.updateFrequency||'monthly', requiredNow=accountRequiredThisMonth(a);
+    const detail=alpha?'Tradingdaten direkt aus ATLAS':doc?`${escapeHtml(doc.fileName||'PDF')} · ${formatFileSize(doc.fileSize)}`:`${escapeHtml(a.provider||accountRoleLabel(a.role))} · ${accountFrequencyLabel(freq)}`;
+    const passive=!requiredNow&&!doc;
+    const action=alpha?'<span class="reviewAuto">✓ automatisch</span>':`<label class="secondary reviewUploadBtn">${doc?'PDF ersetzen':passive?'Optional aktualisieren':'PDF hinzufügen'}<input type="file" accept="application/pdf,.pdf" data-statement-account="${escapeHtml(a.id)}"></label>${doc?`<button class="reviewRemove" type="button" data-statement-remove="${escapeHtml(a.id)}">Entfernen</button>`:''}`;
+    const stateLabel=alpha||doc?'Aktuell':passive?accountFrequencyLabel(freq):'Fehlt';
+    return `<div class="reviewAccountRow"><div class="reviewAccountInfo"><b>${escapeHtml(a.name||'Konto')}</b><span class="reviewFileName">${detail}</span></div><div class="reviewAccountActions"><span class="reviewState ${alpha||doc||passive?'done':''}">${stateLabel}</span>${action}</div></div>`;
   }).join('');
   document.querySelectorAll('[data-statement-account]').forEach(input=>input.onchange=e=>handleStatementUpload(input.dataset.statementAccount,e.target.files?.[0]));
   document.querySelectorAll('[data-statement-remove]').forEach(btn=>btn.onclick=()=>removeStatement(btn.dataset.statementRemove));
+  const missing=Math.max(0,required.length-done);
   if($('coachSignalTitle')&&$('coachSignalText')){
-    if(done===accounts.length){$('coachSignalTitle').textContent='Monatsdaten vollständig ✓';$('coachSignalText').textContent='ATLAS hat alle vorgesehenen Datenquellen für diesen Monat erhalten.';}
-    else{$('coachSignalTitle').textContent=`Noch ${accounts.length-done} ${accounts.length-done===1?'Konto':'Konten'} offen.`;$('coachSignalText').textContent='Füge nur die fehlenden Kontoauszüge hinzu. Alpha wird automatisch aus ATLAS übernommen.';}
+    if(done===required.length){$('coachSignalTitle').textContent='Monatsdaten vollständig ✓';$('coachSignalText').textContent='Alle für diesen Monat vorgesehenen Datenquellen sind aktuell.';}
+    else{$('coachSignalTitle').textContent=`Noch ${missing} ${missing===1?'Konto':'Konten'} offen.`;$('coachSignalText').textContent='Nur monatlich geführte Konten sind für den Review verpflichtend.';}
   }
   if(month===currentMonthKey()&&$('homeSignalTitle')){
-    if(done===accounts.length){$('homeSignalTitle').textContent='Alles aktuell ✓';$('homeSignalText').textContent='Deine Finanzdaten für diesen Monat sind vollständig.';}
-    else{$('homeSignalTitle').textContent='Monatsreview offen.';$('homeSignalText').textContent=`Noch ${accounts.length-done} ${accounts.length-done===1?'Datenquelle':'Datenquellen'} aktualisieren.`;}
+    if(done===required.length){$('homeSignalTitle').textContent='Alles aktuell ✓';$('homeSignalText').textContent='Deine Finanzdaten für diesen Monat sind vollständig.';}
+    else{$('homeSignalTitle').textContent='Monatsreview offen.';$('homeSignalText').textContent=`Noch ${missing} ${missing===1?'Datenquelle':'Datenquellen'} aktualisieren.`;}
   }
   renderFinancialIntelligence(docs);
 }
@@ -887,9 +998,9 @@ async function handleStatementUpload(accountId,file){
     const [{text,pages},hash]=await Promise.all([pdfTextFromFile(file),statementHash(file)]);
     const identifier=String(account.identifier||'').replace(/\s/g,'');
     const identifierMatch=!identifier||text.replace(/\s/g,'').includes(identifier.slice(-4));
-    const payload={accountId,accountName:account.name||'Konto',accountRole:account.role||'',provider:account.provider||'',month,fileName:file.name,fileSize:file.size,fileModified:file.lastModified||null,pages,text,hash,identifierMatch,importedAt:new Date().toISOString(),parserVersion:'594-intelligence-v1'};
+    const payload={accountId,accountName:account.name||'Konto',accountRole:account.role||'',provider:account.provider||'',month,fileName:file.name,fileSize:file.size,fileModified:file.lastModified||null,pages,text,hash,identifierMatch,importedAt:new Date().toISOString(),parserVersion:'595-categories-review-v1'};
     const nextStatements={...(monthlyReviewCache.month===month?monthlyReviewCache.statements:{}),[accountId]:payload};
-    await reviewDocRef(month).set({month,statements:nextStatements,updatedAt:new Date().toISOString()});
+    await reviewDocRef(month).set({month,statements:nextStatements,decisions:monthlyReviewCache.decisions||{},updatedAt:new Date().toISOString()},{merge:true});
     monthlyReviewCache.month=month; monthlyReviewCache.statements=nextStatements; monthlyReviewCache.loading=false;
     if(msg)msg.textContent=identifierMatch?'PDF übernommen.':'PDF übernommen. Hinweis: Die hinterlegte Konto-Kennung wurde im Dokument nicht eindeutig erkannt.';
     paintMonthlyReview(month,monthlyReviewCache.statements);
@@ -897,7 +1008,7 @@ async function handleStatementUpload(accountId,file){
 }
 async function removeStatement(accountId){
   if(!user)return; const month=$('reviewMonth')?.value||currentMonthKey();
-  try{const nextStatements={...(monthlyReviewCache.statements||{})};delete nextStatements[accountId];await reviewDocRef(month).set({month,statements:nextStatements,updatedAt:new Date().toISOString()});monthlyReviewCache.statements=nextStatements;if($('reviewMsg'))$('reviewMsg').textContent='Kontoauszug entfernt.';paintMonthlyReview(month,nextStatements);}catch(e){console.error(e);if($('reviewMsg'))$('reviewMsg').textContent='Kontoauszug konnte nicht entfernt werden.';}
+  try{const nextStatements={...(monthlyReviewCache.statements||{})};delete nextStatements[accountId];await reviewDocRef(month).set({month,statements:nextStatements,decisions:monthlyReviewCache.decisions||{},updatedAt:new Date().toISOString()},{merge:true});monthlyReviewCache.statements=nextStatements;if($('reviewMsg'))$('reviewMsg').textContent='Kontoauszug entfernt.';paintMonthlyReview(month,nextStatements);}catch(e){console.error(e);if($('reviewMsg'))$('reviewMsg').textContent='Kontoauszug konnte nicht entfernt werden.';}
 }
 function cloudMsg(t){
   if($('cloudState'))$('cloudState').textContent=t;
