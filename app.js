@@ -68,6 +68,7 @@ const defaultState={
 };
 let state=structuredClone(defaultState), user=null, unsub=null, saving=false, saveQueued=false, savePromise=Promise.resolve(), saveTimer=null, cloudReady=false, selectedTradeId=null, lastLiveById={}, marketTimer=null, marketBusy=false, formDraft=null, formDirty=false, formMode='none', imageJobs={hkcm:null,tv:null};
 let currentScreen='home', navigationHistory=[];
+let monthlyReviewCache={month:null,statements:{},loading:false};
 const $=id=>document.getElementById(id);
 function fmt(n){const x=Number(n);return Number.isFinite(x)?x.toLocaleString('de-DE',{maximumFractionDigits:2}):'-'}
 function num(v){return Number(String(v??'').replace(',','.'))}
@@ -509,6 +510,13 @@ function refreshWealthShell(){
     if($('homeNetWorth'))$('homeNetWorth').textContent=euroShort(netWorth);
     if($('wealthNetWorth'))$('wealthNetWorth').textContent=euroShort(netWorth);
     if($('homeNetWorthChange'))$('homeNetWorthChange').textContent='Performance wird ab dem ersten Monatsreview berechnet.';
+    if($('homeSignalTitle'))$('homeSignalTitle').textContent='Monatsreview bereit.';
+    if($('homeSignalText'))$('homeSignalText').textContent='Aktualisiere im Coach einmal im Monat deine Kontodaten.';
+    if($('homeSignalAction')){ $('homeSignalAction').textContent='Coach öffnen'; $('homeSignalAction').dataset.mainTarget='coach'; }
+  }else{
+    if($('homeSignalTitle'))$('homeSignalTitle').textContent='Financial Setup einrichten.';
+    if($('homeSignalText'))$('homeSignalText').textContent='Lege Regeln, Konten und dein Vermögensziel zentral fest.';
+    if($('homeSignalAction')){ $('homeSignalAction').textContent='Setup öffnen'; $('homeSignalAction').dataset.mainTarget='setup'; }
   }
   if($('alphaCapital'))$('alphaCapital').textContent=euroShort(alpha);
   if($('alphaLifetime'))$('alphaLifetime').textContent=euroShort(pnl);
@@ -521,6 +529,7 @@ function makeNav(){
   document.querySelectorAll('[data-alpha-target]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.alphaTarget)));
   document.querySelectorAll('[data-main-target]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.mainTarget)));
   document.querySelectorAll('[data-atlas-back]').forEach(b=>b.addEventListener('click',goBack));
+  if($('reviewMonth'))$('reviewMonth').addEventListener('change',()=>{monthlyReviewCache={month:null,statements:{},loading:false};renderMonthlyReview();});
 }
 function show(id,options={}){
   const next=$(id)?id:'home';
@@ -536,6 +545,7 @@ function show(id,options={}){
   document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===main));
   if(next==='create'){if(!formDraft){formMode='new';formDraft=emptyTradeDraft();formDirty=false;clearFileInputs()}loadForm(formDraft);}
   if(next==='setup')renderFinancialSetup();
+  if(next==='coach')renderMonthlyReview();
   refreshWealthShell();
   scrollTo(0,0);
 }
@@ -636,6 +646,119 @@ function saveGoal(){
   const ws=wealthSetup(), target=Math.max(0,setupNumber('goalTarget',1000000)), milestone=Math.max(1000,setupNumber('goalMilestone',20000));
   ws.goal={target,milestone,changedAt:new Date().toISOString()}; state.wealthSetup=ws;
   $('goalMsg').textContent='Ziel gespeichert.'; updateGoalMilestones(); scheduleSave();
+}
+
+function currentMonthKey(){
+  const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function reviewDocRef(month){return atlasFirebase.db.collection('users').doc(user.uid).collection('atlas').doc('monthly_'+month)}
+function pdfWorkerReady(){
+  if(!window.pdfjsLib)return false;
+  if(!pdfjsLib.GlobalWorkerOptions.workerSrc)pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  return true;
+}
+async function pdfTextFromFile(file){
+  if(!file||file.type!=='application/pdf')throw new Error('Bitte eine PDF-Datei auswählen.');
+  if(file.size>12*1024*1024)throw new Error('PDF ist zu groß. Maximal 12 MB pro Kontoauszug.');
+  if(!pdfWorkerReady())throw new Error('PDF-Modul konnte nicht geladen werden.');
+  const data=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data}).promise;
+  const pages=[];
+  for(let i=1;i<=pdf.numPages;i++){
+    const page=await pdf.getPage(i);
+    const content=await page.getTextContent();
+    const text=content.items.map(item=>String(item.str||'')).join(' ').replace(/\s+/g,' ').trim();
+    pages.push(text);
+  }
+  const text=pages.join('\n').trim();
+  if(!text)throw new Error('In dieser PDF wurde kein lesbarer Text gefunden. Bitte einen digitalen Kontoauszug verwenden.');
+  if(text.length>160000)throw new Error('Der Kontoauszug enthält zu viele Textdaten für einen einzelnen Import. Bitte einen kompakteren Monatsauszug verwenden.');
+  return{text,pages:pdf.numPages};
+}
+async function statementHash(file){
+  try{
+    if(!crypto?.subtle)return `${file.name}:${file.size}:${file.lastModified}`;
+    const buf=await file.arrayBuffer();
+    const digest=await crypto.subtle.digest('SHA-256',buf);
+    return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }catch{return `${file.name}:${file.size}:${file.lastModified}`;}
+}
+async function loadMonthlyReview(month){
+  if(!user)return{};
+  monthlyReviewCache={month,statements:{},loading:true};
+  try{
+    const snap=await reviewDocRef(month).get();
+    const docs=snap.exists&&snap.data()?.statements?snap.data().statements:{};
+    monthlyReviewCache={month,statements:docs,loading:false};
+    return docs;
+  }catch(e){
+    console.error('Monthly review load failed',e);
+    monthlyReviewCache={month,statements:{},loading:false,error:e};
+    return{};
+  }
+}
+function reviewActiveAccounts(){return (state.wealthSetup?.accounts||[]).filter(a=>a.status!=='archived')}
+function reviewRoleHint(role){return({CASH:'Cashflow',RESERVE:'Sicherheitsreserve',ALPHA:'ATLAS verbunden',BETA:'Langfristdepot',ASSET:'Vermögenswert'})[role]||role}
+function formatFileSize(bytes){const n=Number(bytes)||0;return n<1024*1024?`${Math.max(1,Math.round(n/1024))} KB`:`${(n/1024/1024).toFixed(1).replace('.',',')} MB`}
+function paintMonthlyReview(month,docs={}){
+  const listEl=$('reviewAccountList'); if(!listEl)return;
+  const accounts=reviewActiveAccounts();
+  if(!accounts.length){
+    listEl.innerHTML='<div class="setupEmpty">Noch keine Konten eingerichtet. Richte zuerst deine Finanzwelt im Financial Setup ein.</div>';
+    if($('reviewProgressText'))$('reviewProgressText').textContent='0 / 0';
+    if($('reviewProgressHint'))$('reviewProgressHint').textContent='Keine Konten';
+    if($('reviewProgressBar'))$('reviewProgressBar').style.width='0%';
+    return;
+  }
+  const done=accounts.filter(a=>a.role==='ALPHA'||docs[a.id]).length;
+  const pct=Math.round(done/accounts.length*100);
+  if($('reviewProgressText'))$('reviewProgressText').textContent=`${done} / ${accounts.length}`;
+  if($('reviewProgressHint'))$('reviewProgressHint').textContent=done===accounts.length?'Monatsdaten vollständig':'Konten aktualisiert';
+  if($('reviewProgressBar'))$('reviewProgressBar').style.width=pct+'%';
+  listEl.innerHTML=accounts.map(a=>{
+    const doc=docs[a.id]; const alpha=a.role==='ALPHA';
+    const detail=alpha?'Tradingdaten direkt aus ATLAS':doc?`${escapeHtml(doc.fileName||'PDF')} · ${formatFileSize(doc.fileSize)}`:`${escapeHtml(a.provider||accountRoleLabel(a.role))} · ${escapeHtml(reviewRoleHint(a.role))}`;
+    const action=alpha?'<span class="reviewAuto">✓ automatisch</span>':`<label class="secondary reviewUploadBtn">${doc?'PDF ersetzen':'PDF hinzufügen'}<input type="file" accept="application/pdf,.pdf" data-statement-account="${escapeHtml(a.id)}"></label>${doc?`<button class="reviewRemove" type="button" data-statement-remove="${escapeHtml(a.id)}">Entfernen</button>`:''}`;
+    return `<div class="reviewAccountRow"><div class="reviewAccountInfo"><b>${escapeHtml(a.name||'Konto')}</b><span class="reviewFileName">${detail}</span></div><div class="reviewAccountActions"><span class="reviewState ${alpha||doc?'done':''}">${alpha||doc?'Aktuell':'Fehlt'}</span>${action}</div></div>`;
+  }).join('');
+  document.querySelectorAll('[data-statement-account]').forEach(input=>input.onchange=e=>handleStatementUpload(input.dataset.statementAccount,e.target.files?.[0]));
+  document.querySelectorAll('[data-statement-remove]').forEach(btn=>btn.onclick=()=>removeStatement(btn.dataset.statementRemove));
+  if($('coachSignalTitle')&&$('coachSignalText')){
+    if(done===accounts.length){$('coachSignalTitle').textContent='Monatsdaten vollständig ✓';$('coachSignalText').textContent='ATLAS hat alle vorgesehenen Datenquellen für diesen Monat erhalten.';}
+    else{$('coachSignalTitle').textContent=`Noch ${accounts.length-done} ${accounts.length-done===1?'Konto':'Konten'} offen.`;$('coachSignalText').textContent='Füge nur die fehlenden Kontoauszüge hinzu. Alpha wird automatisch aus ATLAS übernommen.';}
+  }
+  if(month===currentMonthKey()&&$('homeSignalTitle')){
+    if(done===accounts.length){$('homeSignalTitle').textContent='Alles aktuell ✓';$('homeSignalText').textContent='Deine Finanzdaten für diesen Monat sind vollständig.';}
+    else{$('homeSignalTitle').textContent='Monatsreview offen.';$('homeSignalText').textContent=`Noch ${accounts.length-done} ${accounts.length-done===1?'Datenquelle':'Datenquellen'} aktualisieren.`;}
+  }
+}
+async function renderMonthlyReview(){
+  const input=$('reviewMonth'); if(!input||!user)return;
+  if(!input.value)input.value=currentMonthKey();
+  const month=input.value;
+  if(monthlyReviewCache.month===month&&!monthlyReviewCache.loading){paintMonthlyReview(month,monthlyReviewCache.statements||{});return;}
+  if($('reviewAccountList'))$('reviewAccountList').innerHTML='<div class="setupEmpty">Monatsdaten werden geladen…</div>';
+  const docs=await loadMonthlyReview(month); paintMonthlyReview(month,docs);
+}
+async function handleStatementUpload(accountId,file){
+  if(!file||!user)return;
+  const month=$('reviewMonth')?.value||currentMonthKey(); const account=reviewActiveAccounts().find(a=>a.id===accountId); if(!account)return;
+  const msg=$('reviewMsg'); if(msg)msg.textContent=`${account.name}: PDF wird gelesen…`;
+  try{
+    const [{text,pages},hash]=await Promise.all([pdfTextFromFile(file),statementHash(file)]);
+    const identifier=String(account.identifier||'').replace(/\s/g,'');
+    const identifierMatch=!identifier||text.replace(/\s/g,'').includes(identifier.slice(-4));
+    const payload={accountId,accountName:account.name||'Konto',accountRole:account.role||'',provider:account.provider||'',month,fileName:file.name,fileSize:file.size,fileModified:file.lastModified||null,pages,text,hash,identifierMatch,importedAt:new Date().toISOString(),parserVersion:'593-text-v1'};
+    const nextStatements={...(monthlyReviewCache.month===month?monthlyReviewCache.statements:{}),[accountId]:payload};
+    await reviewDocRef(month).set({month,statements:nextStatements,updatedAt:new Date().toISOString()});
+    monthlyReviewCache.month=month; monthlyReviewCache.statements=nextStatements; monthlyReviewCache.loading=false;
+    if(msg)msg.textContent=identifierMatch?'PDF übernommen.':'PDF übernommen. Hinweis: Die hinterlegte Konto-Kennung wurde im Dokument nicht eindeutig erkannt.';
+    paintMonthlyReview(month,monthlyReviewCache.statements);
+  }catch(e){console.error(e);if(msg)msg.textContent=e?.message||'PDF konnte nicht verarbeitet werden.';paintMonthlyReview(month,monthlyReviewCache.statements||{});}
+}
+async function removeStatement(accountId){
+  if(!user)return; const month=$('reviewMonth')?.value||currentMonthKey();
+  try{const nextStatements={...(monthlyReviewCache.statements||{})};delete nextStatements[accountId];await reviewDocRef(month).set({month,statements:nextStatements,updatedAt:new Date().toISOString()});monthlyReviewCache.statements=nextStatements;if($('reviewMsg'))$('reviewMsg').textContent='Kontoauszug entfernt.';paintMonthlyReview(month,nextStatements);}catch(e){console.error(e);if($('reviewMsg'))$('reviewMsg').textContent='Kontoauszug konnte nicht entfernt werden.';}
 }
 function cloudMsg(t){
   if($('cloudState'))$('cloudState').textContent=t;

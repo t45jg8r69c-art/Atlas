@@ -12,7 +12,7 @@
   <meta name="format-detection" content="telephone=no" />
   <link rel="manifest" href="manifest.webmanifest?v=5810-market-identity-1" />
   <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=5810-market-identity-1" />
-  <link rel="stylesheet" href="style.css?v=592-financial-setup-1" />
+  <link rel="stylesheet" href="style.css?v=593-monthly-review-1" />
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
@@ -61,8 +61,8 @@
           <div><span>ALPHA</span><b id="homeAlpha">–</b></div><div><span>BETA</span><b id="homeBeta">–</b></div><div><span>RESERVE</span><b id="homeReserve">–</b></div><div><span>CASH / ASSETS</span><b id="homeCashAssets">–</b></div>
         </div>
         <div class="atlasSignal">
-          <div><div class="label">ATLAS</div><b>Financial Setup einrichten.</b><p>Lege Regeln, Konten und dein Vermögensziel zentral fest.</p></div>
-          <button class="secondary compactAction" data-main-target="setup">Setup öffnen</button>
+          <div><div class="label">ATLAS</div><b id="homeSignalTitle">Financial Setup einrichten.</b><p id="homeSignalText">Lege Regeln, Konten und dein Vermögensziel zentral fest.</p></div>
+          <button id="homeSignalAction" class="secondary compactAction" data-main-target="setup">Setup öffnen</button>
         </div>
       </section>
 
@@ -93,8 +93,19 @@
       <section id="coach" class="screen wealthScreen">
         <button class="atlasBackButton" data-atlas-back type="button">← Zurück</button>
         <div class="wealthTopline"><div><div class="label">ATLAS Intelligence</div><h1>Coach</h1></div></div>
-        <div class="atlasSignal coachEmpty">
-          <div><div class="label">Aktueller Status</div><b>Alles ruhig.</b><p>Sobald Financial Setup und Monthly Review aktiv sind, erscheinen hier nur relevante Erkenntnisse und konkrete nächste Schritte.</p></div>
+
+        <div class="reviewCard">
+          <div class="reviewHead">
+            <div><div class="label">Monthly Review</div><h2>Finanzdaten aktualisieren</h2><p>Einmal im Monat die Auszüge deiner Konten hinzufügen. ATLAS ordnet sie deiner Finanzstruktur zu.</p></div>
+            <label class="reviewMonth"><span>Monat</span><input id="reviewMonth" type="month"></label>
+          </div>
+          <div class="reviewProgress"><div><b id="reviewProgressText">–</b><span id="reviewProgressHint">Konten werden geladen.</span></div><div class="reviewProgressBar"><i id="reviewProgressBar"></i></div></div>
+          <div id="reviewAccountList" class="reviewAccountList"></div>
+          <p id="reviewMsg" class="msg setupMsg"></p>
+        </div>
+
+        <div id="coachSignal" class="atlasSignal coachEmpty">
+          <div><div class="label">ATLAS</div><b id="coachSignalTitle">Alles ruhig.</b><p id="coachSignalText">Sobald die Monatsdaten vollständig sind, kann ATLAS daraus deinen Vermögensstatus ableiten.</p></div>
         </div>
       </section>
 
@@ -381,13 +392,14 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase.js?v=592-financial-setup-1"></script>
-  <script src="app.js?v=592-financial-setup-1"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="firebase.js?v=593-monthly-review-1"></script>
+  <script src="app.js?v=593-monthly-review-1"></script>
 
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=592-financial-setup-1')
+        navigator.serviceWorker.register('./sw.js?v=593-monthly-review-1')
           .catch(error => console.warn('ATLAS Service Worker konnte nicht registriert werden:', error));
       });
     }
