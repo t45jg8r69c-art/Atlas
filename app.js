@@ -1,4 +1,4 @@
-const tabs=[['plan','Mein Plan'],['create','Eingabe'],['journal','Journal'],['challenge','Challenge']];
+const tabs=[['home','Home'],['wealth','Wealth'],['alpha','Alpha'],['coach','Coach']];
 const markets=[
   ['YM=F','Dow Jones Future','Dow Jones Future'],['NQ=F','Nasdaq 100 Future','Nasdaq 100 Future'],['ES=F','S&P 500 Future','S&P 500 Future'],['RTY=F','Russell 2000 Future','Russell 2000 Future'],['FDAX.EX','DAX Future','DAX Future'],['GC=F','Gold Future','Gold Future'],['SI=F','Silber Future','Silber Future'],['HG=F','Kupfer Future','Kupfer Future'],['CL=F','WTI Öl Future','WTI Öl Future'],['BZ=F','Brent Öl Future','Brent Öl Future'],['DX=F','US Dollar Index Future','US Dollar Index Future'],['EURUSD=X','EUR/USD','EUR/USD'],['BTC-USD','Bitcoin','Bitcoin'],['CUSTOM','Benutzerdefiniert','']
 ];
@@ -460,12 +460,29 @@ function safeRenderAll(){
 
 function upsertTrade(trade){const arr=state.activeTrades||[];const i=arr.findIndex(t=>t.id===trade.id);if(i>=0)arr[i]=trade;else arr.unshift(trade);state.activeTrades=arr;state.plan={...tradeTemplate,id:trade.id,market:trade.market,symbol:trade.symbol};selectedTradeId=trade.id}
 function removeActiveTrade(id){state.activeTrades=(state.activeTrades||[]).filter(t=>t.id!==id);if(selectedTradeId===id)selectedTradeId=null;const first=state.activeTrades[0];state.plan=first?{...tradeTemplate,id:first.id,market:first.market,symbol:first.symbol}:{...tradeTemplate};}
-function makeNav(){const html=tabs.map((t,i)=>`<button data-tab="${t[0]}" class="${i?'':'active'}">${t[1]}</button>`).join('');$('nav').innerHTML=html;$('bottom').innerHTML=html;document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.tab)))}
+function mainSectionFor(id){return ['plan','create','journal','challenge'].includes(id)?'alpha':id}
+function refreshWealthShell(){
+  const alpha=accountBalance(), pnl=journalPnl(), snap=challengeSnapshot();
+  if($('homeAlpha'))$('homeAlpha').textContent=euroShort(alpha);
+  if($('wealthAlpha'))$('wealthAlpha').textContent=euroShort(alpha);
+  if($('alphaCapital'))$('alphaCapital').textContent=euroShort(alpha);
+  if($('alphaLifetime'))$('alphaLifetime').textContent=euroShort(pnl);
+  if($('alphaChallenge'))$('alphaChallenge').textContent=snap.done+' / '+CHALLENGE_BOXES;
+}
+function makeNav(){
+  const html=tabs.map((t,i)=>`<button data-tab="${t[0]}" class="${i?'':'active'}">${t[1]}</button>`).join('');
+  $('nav').innerHTML=html;$('bottom').innerHTML=html;
+  document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.tab)));
+  document.querySelectorAll('[data-alpha-target]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.alphaTarget)));
+  document.querySelectorAll('[data-main-target]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.mainTarget)));
+}
 function show(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-  $(id).classList.add('active');
-  document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
+  const target=$(id)||$('home'); target.classList.add('active');
+  const main=mainSectionFor(id);
+  document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===main));
   if(id==='create'){if(!formDraft){formMode='new';formDraft=emptyTradeDraft();formDirty=false;clearFileInputs()}loadForm(formDraft);}
+  refreshWealthShell();
   scrollTo(0,0);
 }
 function cloudMsg(t){

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>ATLAS – Trade Your Plan</title>
+  <title>ATLAS – Wealth Navigator</title>
   <meta name="theme-color" content="#07101c" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -12,7 +12,7 @@
   <meta name="format-detection" content="telephone=no" />
   <link rel="manifest" href="manifest.webmanifest?v=5810-market-identity-1" />
   <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=5810-market-identity-1" />
-  <link rel="stylesheet" href="style.css?v=5810-icons-centered-loginfix-1" />
+  <link rel="stylesheet" href="style.css?v=5900-wealth-nav-1" />
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
@@ -37,7 +37,7 @@
       <div class="logoBox">
         <div class="logo atlasOfficialMark"><img src="assets/atlas-app-icon-master.png?v=589-homescreen-final-1" alt="ATLAS Nautilus Logo"></div>
         <div class="brand">ATLAS</div>
-        <div class="tag">CLOUD FOUNDATION</div>
+        <div class="tag">WEALTH NAVIGATOR</div>
       </div>
       <nav id="nav" class="nav"></nav>
       <div class="cloudBox">
@@ -47,7 +47,53 @@
     </aside>
 
     <main>
-      <section id="plan" class="screen active">
+
+      <section id="home" class="screen active wealthScreen">
+        <div class="wealthTopline"><div><div class="label">ATLAS Wealth Navigator</div><h1>Home</h1></div></div>
+        <div class="wealthHero">
+          <div class="label">Gesamtvermögen</div>
+          <div class="netWorthValue" id="homeNetWorth">Noch nicht eingerichtet</div>
+          <div class="netWorthChange mutedValue" id="homeNetWorthChange">Performance folgt nach Einrichtung deiner Vermögenskonten.</div>
+        </div>
+        <div class="allocationStrip" aria-label="Vermögensaufteilung">
+          <div><span>ALPHA</span><b id="homeAlpha">–</b></div><div><span>BETA</span><b>–</b></div><div><span>RESERVE</span><b>–</b></div><div><span>CASH / ASSETS</span><b>–</b></div>
+        </div>
+        <div class="atlasSignal">
+          <div><div class="label">ATLAS</div><b>Wealth Setup folgt im nächsten Schritt.</b><p>Dein bestehendes Trading läuft unverändert im Alpha-Bereich weiter.</p></div>
+          <button class="secondary compactAction" data-main-target="alpha">Alpha öffnen</button>
+        </div>
+      </section>
+
+      <section id="wealth" class="screen wealthScreen">
+        <div class="wealthTopline"><div><div class="label">Vermögen</div><h1>Wealth</h1></div></div>
+        <div class="wealthHero compactHero"><div class="label">Gesamtvermögen</div><div class="netWorthValue">Noch nicht eingerichtet</div></div>
+        <div class="wealthList">
+          <div><span>Beta</span><b>–</b></div><div><span>Reserve</span><b>–</b></div><div><span>Alpha</span><b id="wealthAlpha">–</b></div><div><span>Assets</span><b>–</b></div><div><span>Cash</span><b>–</b></div>
+        </div>
+        <p class="quietHint">Konten, Regeln und PDF-Import werden anschließend an diese reduzierte Übersicht angebunden.</p>
+      </section>
+
+      <section id="alpha" class="screen wealthScreen">
+        <div class="wealthTopline"><div><div class="label">Aktiver Vermögensaufbau</div><h1>Alpha</h1></div></div>
+        <div class="alphaSummary">
+          <div><span>Tradingkapital</span><b id="alphaCapital">–</b></div><div><span>Lifetime Profit</span><b id="alphaLifetime">–</b></div><div><span>Challenge</span><b id="alphaChallenge">–</b></div>
+        </div>
+        <div class="alphaLaunch">
+          <button class="alphaLaunchCard" data-alpha-target="plan"><b>Trading Desk</b><span>Plan prüfen & aktive Trades</span></button>
+          <button class="alphaLaunchCard" data-alpha-target="create"><b>Eingabe</b><span>Neuen Trade planen</span></button>
+          <button class="alphaLaunchCard" data-alpha-target="journal"><b>Journal</b><span>Abgeschlossene Trades</span></button>
+          <button class="alphaLaunchCard" data-alpha-target="challenge"><b>Challenge</b><span>20.000-€-Meilensteine</span></button>
+        </div>
+      </section>
+
+      <section id="coach" class="screen wealthScreen">
+        <div class="wealthTopline"><div><div class="label">ATLAS Intelligence</div><h1>Coach</h1></div></div>
+        <div class="atlasSignal coachEmpty">
+          <div><div class="label">Aktueller Status</div><b>Alles ruhig.</b><p>Sobald Financial Setup und Monthly Review aktiv sind, erscheinen hier nur relevante Erkenntnisse und konkrete nächste Schritte.</p></div>
+        </div>
+      </section>
+
+      <section id="plan" class="screen">
         <div class="topline">
           <div>
             <div class="label">Atlas Brain</div>
@@ -280,7 +326,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=589-pwa-1')
+        navigator.serviceWorker.register('./sw.js?v=5900-wealth-nav-1')
           .catch(error => console.warn('ATLAS Service Worker konnte nicht registriert werden:', error));
       });
     }
