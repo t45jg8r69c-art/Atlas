@@ -12,7 +12,7 @@
   <meta name="format-detection" content="telephone=no" />
   <link rel="manifest" href="manifest.webmanifest?v=5810-market-identity-1" />
   <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=5810-market-identity-1" />
-  <link rel="stylesheet" href="style.css?v=5951-wealth-foundation-1" />
+  <link rel="stylesheet" href="style.css?v=5.9.5.2" />
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
@@ -121,6 +121,18 @@
       <section id="setup" class="screen wealthScreen setupScreen">
         <button class="atlasBackButton" data-atlas-back type="button">← Zurück</button>
         <div class="wealthTopline"><div><div class="label">Persönliche Steuerung</div><h1>Financial Setup</h1></div></div>
+
+
+        <div class="setupCard">
+          <div class="setupCardHead"><div><div class="label">Vermögenstracking</div><h2>Dein Startpunkt</h2></div><span class="setupStatusPill">Baseline</span></div>
+          <div class="setupGrid twoCols">
+            <label><span>Startstichtag</span><input id="wealthTrackingStart" type="date"></label>
+          </div>
+          <div id="wealthBaselineSummary" class="wealthBaselineSummary"></div>
+          <p class="setupHint">Startwerte bilden nur die historische Baseline. Für den aktuellen Kontowert verwendet ATLAS automatisch den jüngsten bestätigten Wert mit dem neuesten Stichtag.</p>
+          <button id="btnSaveWealthTracking" class="primary setupSaveBtn" type="button">Startpunkt speichern</button>
+          <p id="wealthTrackingMsg" class="msg setupMsg"></p>
+        </div>
 
         <div class="setupCard">
           <div class="setupCardHead"><div><div class="label">Strategie</div><h2>Deine Regeln</h2></div><span id="strategySavedPill" class="setupStatusPill">Cloud</span></div>
@@ -402,8 +414,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="firebase.js?v=5951-wealth-foundation-1"></script>
-  <script src="app.js?v=5951-wealth-foundation-1"></script>
+  <script src="firebase.js?v=5.9.5.2"></script>
+  <script src="app.js?v=5.9.5.2"></script>
 
   <script>
     if ('serviceWorker' in navigator) {

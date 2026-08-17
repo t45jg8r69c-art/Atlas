@@ -54,6 +54,7 @@ const defaultWealthSetup={
     changedAt:null
   },
   accounts:[],
+  tracking:{startDate:null,createdAt:null},
   goal:{target:1000000,milestone:20000,changedAt:null},
   ruleHistory:[]
 };
@@ -504,6 +505,35 @@ function accountEffectiveMeta(account){
   if(live&&live.value!=null&&(!openingDate||String(live.date||'')>=openingDate))return{value:Number(live.value)||0,date:live.date||'',source:'PDF'};
   return{value:Number(account.openingBalance)||0,date:openingDate,source:'Startwert'};
 }
+
+function wealthTrackingStartDate(){
+  const ws=wealthSetup();
+  const explicit=String(ws.tracking?.startDate||'');
+  if(explicit)return explicit;
+  const dates=(ws.accounts||[]).filter(a=>a.status!=='archived'&&a.role!=='ALPHA'&&a.openingDate).map(a=>String(a.openingDate)).sort();
+  return dates[0]||'';
+}
+function accountValueAtTrackingStart(account,startDate){
+  const openingDate=String(account.openingDate||'');
+  if(!startDate)return Number(account.openingBalance)||0;
+  // Opening balances are baselines. They count at the global start only if their stated date is not after it.
+  if(openingDate&&openingDate<=startDate)return Number(account.openingBalance)||0;
+  return 0;
+}
+function wealthBaselineSnapshot(){
+  const accounts=(state.wealthSetup?.accounts||[]).filter(a=>a.status!=='archived');
+  const startDate=wealthTrackingStartDate();
+  const alpha=accountBalance();
+  const nonAlpha=accounts.filter(a=>a.role!=='ALPHA').reduce((sum,a)=>sum+accountValueAtTrackingStart(a,startDate),0);
+  return{date:startDate,value:alpha+nonAlpha,alpha,nonAlpha};
+}
+function wealthCurrentSnapshot(){
+  const accounts=(state.wealthSetup?.accounts||[]).filter(a=>a.status!=='archived');
+  const alpha=accountBalance();
+  const nonAlpha=accounts.filter(a=>a.role!=='ALPHA').reduce((sum,a)=>sum+accountEffectiveValue(a),0);
+  return{value:alpha+nonAlpha,alpha,nonAlpha};
+}
+
 function refreshWealthShell(){
   const alpha=accountBalance(), pnl=journalPnl(), snap=challengeSnapshot();
   const accounts=(state.wealthSetup?.accounts||[]).filter(a=>a.status!=='archived');
@@ -524,7 +554,13 @@ function refreshWealthShell(){
   if(hasWealthSetup){
     if($('homeNetWorth'))$('homeNetWorth').textContent=euroShort(netWorth);
     if($('wealthNetWorth'))$('wealthNetWorth').textContent=euroShort(netWorth);
-    if($('homeNetWorthChange'))$('homeNetWorthChange').textContent='Performance wird aus bestätigten Stichtagswerten aufgebaut.';
+    if($('homeNetWorthChange')){
+      const base=wealthBaselineSnapshot(), cur=wealthCurrentSnapshot();
+      if(base.date&&base.value!==0){
+        const diff=cur.value-base.value, pct=(diff/base.value)*100;
+        $('homeNetWorthChange').textContent=`${diff>=0?'+':''}${pct.toLocaleString('de-DE',{minimumFractionDigits:1,maximumFractionDigits:1})} % seit Start · ${base.date}`;
+      }else $('homeNetWorthChange').textContent='Startstichtag im Financial Setup festlegen.';
+    }
     if($('homeSignalTitle'))$('homeSignalTitle').textContent='Monatsreview bereit.';
     if($('homeSignalText'))$('homeSignalText').textContent='ATLAS nutzt je Konto automatisch den jüngsten bestätigten Wert.';
     if($('homeSignalAction')){ $('homeSignalAction').textContent='Coach öffnen'; $('homeSignalAction').dataset.mainTarget='coach'; }
@@ -614,8 +650,29 @@ function renderFinancialSetup(){
   $('goalTarget').value=g.target??1000000;
   $('goalMilestone').value=g.milestone??20000;
   renderAccountList();
+  const tracking=ws.tracking||{};
+  if($('wealthTrackingStart'))$('wealthTrackingStart').value=tracking.startDate||wealthTrackingStartDate()||new Date().toISOString().slice(0,10);
+  renderWealthBaselineSummary();
   updateGoalMilestones();
 }
+
+function renderWealthBaselineSummary(){
+  if(!$('wealthBaselineSummary'))return;
+  const base=wealthBaselineSnapshot(), cur=wealthCurrentSnapshot();
+  const diff=cur.value-base.value;
+  const pct=base.value?diff/base.value*100:null;
+  $('wealthBaselineSummary').innerHTML=`<div><span>Startvermögen</span><b>${euroExact(base.value)}</b><small>${base.date?`Stichtag ${escapeHtml(base.date)}`:'Noch kein Startstichtag'}</small></div><div><span>Aktuell</span><b>${euroExact(cur.value)}</b><small>Jüngster bestätigter Wert je Konto</small></div><div><span>Veränderung</span><b>${pct==null?'–':`${diff>=0?'+':''}${pct.toLocaleString('de-DE',{minimumFractionDigits:1,maximumFractionDigits:1})} %`}</b><small>${pct==null?'Baseline fehlt':`${diff>=0?'+':''}${euroExact(diff)}`}</small></div>`;
+}
+function saveWealthTracking(){
+  const ws=wealthSetup();
+  const date=$('wealthTrackingStart')?.value||'';
+  if(!date){if($('wealthTrackingMsg'))$('wealthTrackingMsg').textContent='Bitte einen Startstichtag wählen.';return;}
+  ws.tracking={...(ws.tracking||{}),startDate:date,createdAt:ws.tracking?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()};
+  state.wealthSetup=ws;
+  if($('wealthTrackingMsg'))$('wealthTrackingMsg').textContent='Startstichtag gespeichert.';
+  renderWealthBaselineSummary();refreshWealthShell();scheduleSave();
+}
+
 function saveStrategy(){
   const ws=wealthSetup(), before={...(ws.strategy||defaultWealthSetup.strategy)};
   const after={
@@ -675,7 +732,7 @@ function addAccount(){
   const ws=wealthSetup();
   const values={name,provider:String($('accountProvider')?.value||'').trim(),role:$('accountRole')?.value||'CASH',identifier:String($('accountIdentifier')?.value||'').trim(),openingBalance:setupNumber('accountOpeningBalance',0),openingDate:$('accountOpeningDate')?.value||new Date().toISOString().slice(0,10),updateFrequency:$('accountFrequency')?.value||'monthly',updatedAt:new Date().toISOString()};
   if(editingAccountId){ws.accounts=(ws.accounts||[]).map(a=>a.id===editingAccountId?{...a,...values}:a);}else{ws.accounts=[...(ws.accounts||[]),{id:'acc_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),...values,status:'active',createdAt:new Date().toISOString()}];}
-  state.wealthSetup=ws; clearAccountForm(); toggleAccountForm(false); renderAccountList(); refreshWealthShell(); scheduleSave();
+  state.wealthSetup=ws; clearAccountForm(); toggleAccountForm(false); renderAccountList(); refreshWealthShell(); renderWealthBaselineSummary(); scheduleSave();
 }
 
 function cycleAccountFrequency(id){
@@ -1660,7 +1717,7 @@ function milestoneDates(done){const trades=[...(state.trades||[])].reverse();let
 function renderChallenge(){const snap=challengeSnapshot();if($('accountStart'))$('accountStart').value=state.settings.accountStart||'';$('accountBalance').textContent=euroShort(snap.balance);$('journalProfit').textContent=euroShort(snap.pnl);$('wealthNow').textContent=snap.done+' / '+CHALLENGE_BOXES;$('wealthPct').textContent=snap.pct+'%';$('wealthOpen').textContent=euroShort(snap.open);$('nextMilestone').textContent=snap.done>=CHALLENGE_BOXES?'Ziel erreicht':euroShort(snap.next);const bar=$('wealthBar');if(bar)bar.style.width=snap.pct+'%';const dates=milestoneDates(snap.done);$('boxes').innerHTML=Array.from({length:CHALLENGE_BOXES},(_,i)=>{const n=i+1, amount=n*CHALLENGE_BOX_VALUE, done=n<=snap.done;return `<div class="box ${done?'done':''}"><b>${n}</b><span>${euroShort(amount)}</span><small>${done?(dates[n]||'erreicht'):''}</small></div>`}).join('')}
 function marketSelect(){const val=$('fMarketSelect').value;const m=markets.find(x=>x[0]===val);if(!m)return;if(val!=='CUSTOM'){$('fSymbol').value=m[0];$('fMarket').value=m[2]}}
 function clock(){$('clockPill').textContent=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}
-function boot(){makeNav();if($('btnSaveStrategy'))$('btnSaveStrategy').onclick=saveStrategy;if($('btnToggleAccountForm'))$('btnToggleAccountForm').onclick=()=>toggleAccountForm(true);if($('btnCancelAccount'))$('btnCancelAccount').onclick=()=>toggleAccountForm(false);if($('btnAddAccount'))$('btnAddAccount').onclick=addAccount;if($('btnSaveGoal'))$('btnSaveGoal').onclick=saveGoal;if($('goalTarget'))$('goalTarget').addEventListener('input',updateGoalMilestones);if($('goalMilestone'))$('goalMilestone').addEventListener('input',updateGoalMilestones);$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnNewTrade').onclick=startNewTrade;$('btnBackDesk').onclick=()=>{selectedTradeId=null;renderPlan();scrollTo(0,0)};$('btnEditTrade').onclick=editSelectedTrade;if($('btnDeleteActiveTrade'))$('btnDeleteActiveTrade').onclick=deleteActiveTrade;if($('closeMode'))$('closeMode').onchange=()=>renderPlan();if($('closePrice'))$('closePrice').oninput=()=>renderPlan();$('btnExportJournal').onclick=exportJournal;if($('btnSaveAccount'))$('btnSaveAccount').onclick=saveAccountBase;$('fMarketSelect').onchange=()=>{marketSelect();markFormDirty();renderDeviationPanel()};
+function boot(){makeNav();if($('btnSaveWealthTracking'))$('btnSaveWealthTracking').onclick=saveWealthTracking;if($('btnSaveStrategy'))$('btnSaveStrategy').onclick=saveStrategy;if($('btnToggleAccountForm'))$('btnToggleAccountForm').onclick=()=>toggleAccountForm(true);if($('btnCancelAccount'))$('btnCancelAccount').onclick=()=>toggleAccountForm(false);if($('btnAddAccount'))$('btnAddAccount').onclick=addAccount;if($('btnSaveGoal'))$('btnSaveGoal').onclick=saveGoal;if($('goalTarget'))$('goalTarget').addEventListener('input',updateGoalMilestones);if($('goalMilestone'))$('goalMilestone').addEventListener('input',updateGoalMilestones);$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnNewTrade').onclick=startNewTrade;$('btnBackDesk').onclick=()=>{selectedTradeId=null;renderPlan();scrollTo(0,0)};$('btnEditTrade').onclick=editSelectedTrade;if($('btnDeleteActiveTrade'))$('btnDeleteActiveTrade').onclick=deleteActiveTrade;if($('closeMode'))$('closeMode').onchange=()=>renderPlan();if($('closePrice'))$('closePrice').oninput=()=>renderPlan();$('btnExportJournal').onclick=exportJournal;if($('btnSaveAccount'))$('btnSaveAccount').onclick=saveAccountBase;$('fMarketSelect').onchange=()=>{marketSelect();markFormDirty();renderDeviationPanel()};
   ['fBrokerAccount','fMarket','fSymbol','fDirection','fPositionStatus','fContracts','fPointValue','fEntry','fStop','fTarget','fZone','fWhy','fRule'].forEach(id=>{
     const el=$(id);if(!el)return;
     el.addEventListener('input',()=>{markFormDirty();renderDeviationPanel()});
