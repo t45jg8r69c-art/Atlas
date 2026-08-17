@@ -1099,3 +1099,24 @@ body{
 .wealthBaselineSummary b{display:block;font-size:18px;margin:5px 0}
 .setupHint{color:var(--muted);font-size:13px;line-height:1.5;margin:10px 0 0}
 @media(max-width:700px){.wealthBaselineSummary{grid-template-columns:1fr}.wealthBaselineSummary>div{padding:12px}}
+
+.reviewCloseCard,.atlasStatementCard,.statementHistoryCard{margin-top:18px;padding:20px;border:1px solid var(--line);border-radius:18px;background:var(--card)}
+.reviewCloseCard{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}
+.reviewCloseCard h2,.atlasStatementCard h2{margin:3px 0 5px}
+.reviewCloseCard p{margin:0;color:var(--muted)}
+.reviewCloseActions{display:flex;gap:8px;align-items:center}
+.atlasStatementHead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.atlasStatementHero{padding:18px 0;border-bottom:1px solid var(--line)}
+.atlasStatementHero span,.atlasStatementSection>span{display:block;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+.atlasStatementHero b{display:block;font-size:34px;margin:5px 0}
+.atlasStatementHero small{color:var(--muted)}
+.atlasStatementWealth{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;padding:14px 0}
+.atlasStatementWealth>div,.atlasStatementCashflow>div{padding:12px;border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.025)}
+.atlasStatementWealth span,.atlasStatementWealth small,.atlasStatementCashflow span{display:block;color:var(--muted);font-size:11px}
+.atlasStatementWealth b,.atlasStatementCashflow b{display:block;margin:4px 0;font-size:15px}
+.atlasStatementSection{padding-top:4px}
+.atlasStatementCashflow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:8px}
+.atlasStatementHistory{display:grid;gap:7px;margin-top:10px}
+.statementHistoryRow{width:100%;display:flex;justify-content:space-between;align-items:center;text-align:left;border:1px solid var(--line);background:rgba(255,255,255,.02);border-radius:12px;padding:11px 13px;color:inherit;cursor:pointer}
+.statementHistoryRow div{display:flex;gap:10px;align-items:center}.statementHistoryRow span,.statementHistoryRow small{color:var(--muted)}
+@media(max-width:760px){.atlasStatementWealth{grid-template-columns:repeat(2,minmax(0,1fr))}.atlasStatementCashflow{grid-template-columns:repeat(2,minmax(0,1fr))}.atlasStatementHero b{font-size:28px}.reviewCloseCard{align-items:stretch}.reviewCloseActions button{width:100%}}

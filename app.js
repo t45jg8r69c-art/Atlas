@@ -69,7 +69,7 @@ const defaultState={
 };
 let state=structuredClone(defaultState), user=null, unsub=null, saving=false, saveQueued=false, savePromise=Promise.resolve(), saveTimer=null, cloudReady=false, selectedTradeId=null, lastLiveById={}, marketTimer=null, marketBusy=false, formDraft=null, formDirty=false, formMode='none', imageJobs={hkcm:null,tv:null};
 let currentScreen='home', navigationHistory=[];
-let monthlyReviewCache={month:null,statements:{},decisions:{},loading:false};
+let monthlyReviewCache={month:null,statements:{},decisions:{},closure:null,loading:false};
 let latestWealthValues={};
 let editingAccountId=null;
 const $=id=>document.getElementById(id);
@@ -610,7 +610,7 @@ function makeNav(){
   document.querySelectorAll('[data-alpha-target]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.alphaTarget)));
   document.querySelectorAll('[data-main-target]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.mainTarget)));
   document.querySelectorAll('[data-atlas-back]').forEach(b=>b.addEventListener('click',goBack));
-  if($('reviewMonth'))$('reviewMonth').addEventListener('change',()=>{monthlyReviewCache={month:null,statements:{},decisions:{},loading:false};renderMonthlyReview();});
+  if($('reviewMonth'))$('reviewMonth').addEventListener('change',()=>{monthlyReviewCache={month:null,statements:{},decisions:{},closure:null,loading:false};renderMonthlyReview();});
 }
 function show(id,options={}){
   const next=$(id)?id:'home';
@@ -795,16 +795,16 @@ async function statementHash(file){
 }
 async function loadMonthlyReview(month){
   if(!user)return{};
-  monthlyReviewCache={month,statements:{},decisions:{},loading:true};
+  monthlyReviewCache={month,statements:{},decisions:{},closure:null,loading:true};
   try{
     const snap=await reviewDocRef(month).get();
     const data=snap.exists?snap.data()||{}:{};
-    const docs=data.statements||{}, decisions=data.decisions||{};
-    monthlyReviewCache={month,statements:docs,decisions,loading:false};
+    const docs=data.statements||{}, decisions=data.decisions||{}, closure=data.closure||null;
+    monthlyReviewCache={month,statements:docs,decisions,closure,loading:false};
     return docs;
   }catch(e){
     console.error('Monthly review load failed',e);
-    monthlyReviewCache={month,statements:{},decisions:{},loading:false,error:e};
+    monthlyReviewCache={month,statements:{},decisions:{},closure:null,loading:false,error:e};
     return{};
   }
 }
@@ -1048,6 +1048,100 @@ function renderFinancialIntelligence(docs={}){
   }
   renderCategorySummary(rows); renderReviewChecks(rows);
 }
+
+function monthLabelDE(month){
+  const [y,m]=String(month||'').split('-'); const names=['','Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  return `${names[Number(m)]||m} ${y||''}`.trim();
+}
+function reviewRows(docs={}){
+  return reviewActiveAccounts().filter(a=>a.role!=='ALPHA'&&docs[a.id]).map(a=>({account:a,analysis:analyzeStatement(docs[a.id],a)}));
+}
+function roleClosingFromRows(rows,role){
+  return rows.filter(r=>r.account.role===role&&r.analysis.closing!=null).reduce((s,r)=>s+Number(r.analysis.closing||0),0);
+}
+function currentMonthWealthSnapshot(rows){
+  const alpha=accountBalance();
+  const beta=roleClosingFromRows(rows,'BETA');
+  const reserve=roleClosingFromRows(rows,'RESERVE') || reviewActiveAccounts().filter(a=>a.role==='RESERVE').reduce((s,a)=>s+accountEffectiveValue(a),0);
+  const cash=roleClosingFromRows(rows,'CASH');
+  const assets=roleClosingFromRows(rows,'ASSET');
+  return{alpha,beta,reserve,cash,assets,total:alpha+beta+reserve+cash+assets};
+}
+async function previousClosedStatement(month){
+  if(!user)return null;
+  try{
+    const snap=await atlasFirebase.db.collection('users').doc(user.uid).collection('atlas').where('month','<',month).get();
+    const arr=[];snap.forEach(d=>{const x=d.data();if(x?.closure?.status==='closed')arr.push(x.closure)});
+    arr.sort((a,b)=>String(b.month).localeCompare(String(a.month)));return arr[0]||null;
+  }catch(e){console.error('Previous statement load failed',e);return null;}
+}
+function snapshotChange(current,previous,key){return Number(current?.[key]||0)-Number(previous?.wealth?.[key]||0)}
+function reviewReadyToClose(docs={}){
+  const accounts=reviewActiveAccounts(), required=accounts.filter(accountRequiredThisMonth);
+  const complete=required.every(a=>a.role==='ALPHA'||docs[a.id]);
+  const rows=reviewRows(docs), unresolved=unresolvedReviewItems(rows), low=rows.some(r=>r.analysis.confidence==='low');
+  return{ready:complete&&!unresolved.length&&!low,complete,unresolved:unresolved.length,low,rows};
+}
+async function closeMonthlyReview(){
+  if(!user)return;
+  const month=$('reviewMonth')?.value||currentMonthKey(), docs=monthlyReviewCache.statements||{};
+  const check=reviewReadyToClose(docs);
+  if(!check.ready){if($('reviewCloseMsg'))$('reviewCloseMsg').textContent=check.unresolved?`Noch ${check.unresolved} Prüfung(en) offen.`:check.low?'Mindestens ein Dokument wurde noch nicht sicher erkannt.':'Noch nicht alle monatlichen Datenquellen sind aktuell.';return;}
+  const cf=cashflowTotals(check.rows), cats=categoryTotals(check.rows), previous=await previousClosedStatement(month), wealth=currentMonthWealthSnapshot(check.rows);
+  const cashflow={income:cf.income,expenses:cf.expenses,free:cf.income-cf.expenses,transfers:cf.transfers,necessary:cats.necessary,categories:cats.totals};
+  const closure={status:'closed',month,closedAt:new Date().toISOString(),wealth,cashflow,previousMonth:previous?.month||null,previousWealth:previous?.wealth||null,reviewVersion:'596-smart-review-v1'};
+  await reviewDocRef(month).set({month,statements:docs,decisions:monthlyReviewCache.decisions||{},closure,updatedAt:new Date().toISOString()},{merge:true});
+  monthlyReviewCache.closure=closure;
+  if($('reviewCloseMsg'))$('reviewCloseMsg').textContent='Monat abgeschlossen und als ATLAS Statement gespeichert.';
+  paintMonthlyReview(month,docs);
+}
+async function reopenMonthlyReview(){
+  if(!user)return;const month=$('reviewMonth')?.value||currentMonthKey();
+  await reviewDocRef(month).set({closure:null,updatedAt:new Date().toISOString()},{merge:true});
+  monthlyReviewCache.closure=null;if($('reviewCloseMsg'))$('reviewCloseMsg').textContent='Monat wieder geöffnet.';paintMonthlyReview(month,monthlyReviewCache.statements||{});
+}
+function renderAtlasStatement(month,docs={}){
+  const card=$('atlasStatementCard');if(!card)return;
+  const closure=monthlyReviewCache.closure;
+  if(!closure||closure.status!=='closed'){card.classList.add('hidden');return;}
+  card.classList.remove('hidden');
+  const w=closure.wealth||{}, prev=closure.previousWealth||{}, cf=closure.cashflow||{};
+  const change=Number(w.total||0)-Number(prev.total||0), pct=Number(prev.total)?change/Number(prev.total)*100:null;
+  $('atlasStatementTitle').textContent=monthLabelDE(month);
+  $('atlasStatementNet').textContent=euroExact(w.total||0);
+  $('atlasStatementChange').textContent=closure.previousMonth?(pct==null?`${change>=0?'+':''}${euroExact(change)}`:`${change>=0?'+':''}${euroExact(change)} · ${pct>=0?'+':''}${pct.toLocaleString('de-DE',{minimumFractionDigits:1,maximumFractionDigits:1})} %`):'Erster abgeschlossener Monat';
+  const roles=[['Alpha','alpha'],['Beta','beta'],['Reserve','reserve'],['Cash','cash'],['Assets','assets']];
+  $('atlasStatementWealth').innerHTML=roles.map(([label,key])=>`<div><span>${label}</span><b>${euroExact(w[key]||0)}</b><small>${closure.previousMonth?`${snapshotChange(w,{wealth:prev},key)>=0?'+':''}${euroExact(snapshotChange(w,{wealth:prev},key))}`:'Baseline'}</small></div>`).join('');
+  $('atlasStatementCashflow').innerHTML=`<div><span>Einnahmen</span><b>${euroExact(cf.income||0)}</b></div><div><span>Lebenshaltung / Ausgaben</span><b>${euroExact(cf.expenses||0)}</b></div><div><span>Freier Cashflow</span><b>${euroExact(cf.free||0)}</b></div><div><span>Notwendige Ausgaben</span><b>${euroExact(cf.necessary||0)}</b></div>`;
+}
+async function renderStatementHistory(){
+  const box=$('atlasStatementHistory');if(!box||!user)return;
+  try{
+    const snap=await atlasFirebase.db.collection('users').doc(user.uid).collection('atlas').where('month','>=','0000-00').get();
+    const arr=[];snap.forEach(d=>{const x=d.data();if(x?.closure?.status==='closed')arr.push(x.closure)});
+    arr.sort((a,b)=>String(b.month).localeCompare(String(a.month)));
+    if(!arr.length){box.innerHTML='<div class="setupEmpty">Noch keine abgeschlossenen Monate.</div>';return;}
+    box.innerHTML=arr.slice(0,18).map(c=>`<button class="statementHistoryRow" data-statement-month="${escapeHtml(c.month)}" type="button"><div><b>${escapeHtml(monthLabelDE(c.month))}</b><span>${euroExact(c.wealth?.total||0)}</span></div><small>ATLAS Statement ✓</small></button>`).join('');
+    document.querySelectorAll('[data-statement-month]').forEach(b=>b.onclick=()=>{if($('reviewMonth'))$('reviewMonth').value=b.dataset.statementMonth;monthlyReviewCache={month:null,statements:{},decisions:{},closure:null,loading:false};renderMonthlyReview();});
+  }catch(e){console.error(e);box.innerHTML='<div class="setupEmpty">Historie konnte nicht geladen werden.</div>';}
+}
+function renderReviewClose(month,docs={}){
+  const card=$('reviewCloseCard');if(!card)return;
+  const closed=monthlyReviewCache.closure?.status==='closed';
+  card.classList.remove('hidden');
+  if(closed){
+    $('reviewCloseTitle').textContent='Monat abgeschlossen ✓';
+    $('reviewCloseText').textContent='Dieser Monatsstand ist eingefroren und bildet deine Vermögenshistorie.';
+    $('btnCloseReview').classList.add('hidden');$('btnReopenReview').classList.remove('hidden');
+  }else{
+    const check=reviewReadyToClose(docs);
+    $('reviewCloseTitle').textContent=check.ready?'Bereit zum Abschluss':'Review noch offen';
+    $('reviewCloseText').textContent=check.ready?'Alle Pflichtdaten sind vorhanden und geprüft. Jetzt ATLAS Statement erzeugen.':check.unresolved?`${check.unresolved} Buchung(en) benötigen noch deine Entscheidung.`:check.low?'Mindestens ein Dokument benötigt noch Prüfung.':'Noch nicht alle monatlichen Datenquellen sind vollständig.';
+    $('btnCloseReview').classList.toggle('hidden',!check.ready);$('btnReopenReview').classList.add('hidden');
+  }
+  renderAtlasStatement(month,docs);
+}
+
 function accountRequiredThisMonth(a){return a.role==='ALPHA'||(a.updateFrequency||'monthly')==='monthly'}
 function paintMonthlyReview(month,docs={}){
   const listEl=$('reviewAccountList'); if(!listEl)return;
@@ -1064,7 +1158,8 @@ function paintMonthlyReview(month,docs={}){
     const doc=docs[a.id], alpha=a.role==='ALPHA', freq=a.updateFrequency||'monthly', requiredNow=accountRequiredThisMonth(a);
     const detail=alpha?'Tradingdaten direkt aus ATLAS':doc?`${escapeHtml(doc.fileName||'PDF')} · ${formatFileSize(doc.fileSize)}`:`${escapeHtml(a.provider||accountRoleLabel(a.role))} · ${accountFrequencyLabel(freq)}`;
     const passive=!requiredNow&&!doc;
-    const action=alpha?'<span class="reviewAuto">✓ automatisch</span>':`<label class="secondary reviewUploadBtn">${doc?'PDF ersetzen':passive?'Optional aktualisieren':'PDF hinzufügen'}<input type="file" accept="application/pdf,.pdf" data-statement-account="${escapeHtml(a.id)}"></label>${doc?`<button class="reviewRemove" type="button" data-statement-remove="${escapeHtml(a.id)}">Entfernen</button>`:''}`;
+    const closed=monthlyReviewCache.closure?.status==='closed';
+    const action=alpha?'<span class="reviewAuto">✓ automatisch</span>':closed?'<span class="reviewAuto">✓ eingefroren</span>':`<label class="secondary reviewUploadBtn">${doc?'PDF ersetzen':passive?'Optional aktualisieren':'PDF hinzufügen'}<input type="file" accept="application/pdf,.pdf" data-statement-account="${escapeHtml(a.id)}"></label>${doc?`<button class="reviewRemove" type="button" data-statement-remove="${escapeHtml(a.id)}">Entfernen</button>`:''}`;
     const stateLabel=alpha||doc?'Aktuell':passive?accountFrequencyLabel(freq):'Fehlt';
     return `<div class="reviewAccountRow"><div class="reviewAccountInfo"><b>${escapeHtml(a.name||'Konto')}</b><span class="reviewFileName">${detail}</span></div><div class="reviewAccountActions"><span class="reviewState ${alpha||doc||passive?'done':''}">${stateLabel}</span>${action}</div></div>`;
   }).join('');
@@ -1080,6 +1175,8 @@ function paintMonthlyReview(month,docs={}){
     else{$('homeSignalTitle').textContent='Monatsreview offen.';$('homeSignalText').textContent=`Noch ${missing} ${missing===1?'Datenquelle':'Datenquellen'} aktualisieren.`;}
   }
   renderFinancialIntelligence(docs);
+  renderReviewClose(month,docs);
+  renderStatementHistory();
 }
 async function renderMonthlyReview(){
   const input=$('reviewMonth'); if(!input||!user)return;
@@ -1097,7 +1194,7 @@ async function handleStatementUpload(accountId,file){
     const [{text,pages},hash]=await Promise.all([pdfTextFromFile(file),statementHash(file)]);
     const identifier=String(account.identifier||'').replace(/\s/g,'');
     const identifierMatch=!identifier||text.replace(/\s/g,'').includes(identifier.slice(-4));
-    const payload={accountId,accountName:account.name||'Konto',accountRole:account.role||'',provider:account.provider||'',month,fileName:file.name,fileSize:file.size,fileModified:file.lastModified||null,pages,text,hash,identifierMatch,importedAt:new Date().toISOString(),parserVersion:'5951-wealth-foundation-v1'};
+    const payload={accountId,accountName:account.name||'Konto',accountRole:account.role||'',provider:account.provider||'',month,fileName:file.name,fileSize:file.size,fileModified:file.lastModified||null,pages,text,hash,identifierMatch,importedAt:new Date().toISOString(),parserVersion:'596-smart-review-v1'};
     const nextStatements={...(monthlyReviewCache.month===month?monthlyReviewCache.statements:{}),[accountId]:payload};
     await reviewDocRef(month).set({month,statements:nextStatements,decisions:monthlyReviewCache.decisions||{},updatedAt:new Date().toISOString()},{merge:true});
     monthlyReviewCache.month=month; monthlyReviewCache.statements=nextStatements; monthlyReviewCache.loading=false;
@@ -1717,7 +1814,7 @@ function milestoneDates(done){const trades=[...(state.trades||[])].reverse();let
 function renderChallenge(){const snap=challengeSnapshot();if($('accountStart'))$('accountStart').value=state.settings.accountStart||'';$('accountBalance').textContent=euroShort(snap.balance);$('journalProfit').textContent=euroShort(snap.pnl);$('wealthNow').textContent=snap.done+' / '+CHALLENGE_BOXES;$('wealthPct').textContent=snap.pct+'%';$('wealthOpen').textContent=euroShort(snap.open);$('nextMilestone').textContent=snap.done>=CHALLENGE_BOXES?'Ziel erreicht':euroShort(snap.next);const bar=$('wealthBar');if(bar)bar.style.width=snap.pct+'%';const dates=milestoneDates(snap.done);$('boxes').innerHTML=Array.from({length:CHALLENGE_BOXES},(_,i)=>{const n=i+1, amount=n*CHALLENGE_BOX_VALUE, done=n<=snap.done;return `<div class="box ${done?'done':''}"><b>${n}</b><span>${euroShort(amount)}</span><small>${done?(dates[n]||'erreicht'):''}</small></div>`}).join('')}
 function marketSelect(){const val=$('fMarketSelect').value;const m=markets.find(x=>x[0]===val);if(!m)return;if(val!=='CUSTOM'){$('fSymbol').value=m[0];$('fMarket').value=m[2]}}
 function clock(){$('clockPill').textContent=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}
-function boot(){makeNav();if($('btnSaveWealthTracking'))$('btnSaveWealthTracking').onclick=saveWealthTracking;if($('btnSaveStrategy'))$('btnSaveStrategy').onclick=saveStrategy;if($('btnToggleAccountForm'))$('btnToggleAccountForm').onclick=()=>toggleAccountForm(true);if($('btnCancelAccount'))$('btnCancelAccount').onclick=()=>toggleAccountForm(false);if($('btnAddAccount'))$('btnAddAccount').onclick=addAccount;if($('btnSaveGoal'))$('btnSaveGoal').onclick=saveGoal;if($('goalTarget'))$('goalTarget').addEventListener('input',updateGoalMilestones);if($('goalMilestone'))$('goalMilestone').addEventListener('input',updateGoalMilestones);$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnNewTrade').onclick=startNewTrade;$('btnBackDesk').onclick=()=>{selectedTradeId=null;renderPlan();scrollTo(0,0)};$('btnEditTrade').onclick=editSelectedTrade;if($('btnDeleteActiveTrade'))$('btnDeleteActiveTrade').onclick=deleteActiveTrade;if($('closeMode'))$('closeMode').onchange=()=>renderPlan();if($('closePrice'))$('closePrice').oninput=()=>renderPlan();$('btnExportJournal').onclick=exportJournal;if($('btnSaveAccount'))$('btnSaveAccount').onclick=saveAccountBase;$('fMarketSelect').onchange=()=>{marketSelect();markFormDirty();renderDeviationPanel()};
+function boot(){makeNav();if($('btnCloseReview'))$('btnCloseReview').onclick=closeMonthlyReview;if($('btnReopenReview'))$('btnReopenReview').onclick=reopenMonthlyReview;if($('btnSaveWealthTracking'))$('btnSaveWealthTracking').onclick=saveWealthTracking;if($('btnSaveStrategy'))$('btnSaveStrategy').onclick=saveStrategy;if($('btnToggleAccountForm'))$('btnToggleAccountForm').onclick=()=>toggleAccountForm(true);if($('btnCancelAccount'))$('btnCancelAccount').onclick=()=>toggleAccountForm(false);if($('btnAddAccount'))$('btnAddAccount').onclick=addAccount;if($('btnSaveGoal'))$('btnSaveGoal').onclick=saveGoal;if($('goalTarget'))$('goalTarget').addEventListener('input',updateGoalMilestones);if($('goalMilestone'))$('goalMilestone').addEventListener('input',updateGoalMilestones);$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnNewTrade').onclick=startNewTrade;$('btnBackDesk').onclick=()=>{selectedTradeId=null;renderPlan();scrollTo(0,0)};$('btnEditTrade').onclick=editSelectedTrade;if($('btnDeleteActiveTrade'))$('btnDeleteActiveTrade').onclick=deleteActiveTrade;if($('closeMode'))$('closeMode').onchange=()=>renderPlan();if($('closePrice'))$('closePrice').oninput=()=>renderPlan();$('btnExportJournal').onclick=exportJournal;if($('btnSaveAccount'))$('btnSaveAccount').onclick=saveAccountBase;$('fMarketSelect').onchange=()=>{marketSelect();markFormDirty();renderDeviationPanel()};
   ['fBrokerAccount','fMarket','fSymbol','fDirection','fPositionStatus','fContracts','fPointValue','fEntry','fStop','fTarget','fZone','fWhy','fRule'].forEach(id=>{
     const el=$(id);if(!el)return;
     el.addEventListener('input',()=>{markFormDirty();renderDeviationPanel()});

@@ -12,7 +12,7 @@
   <meta name="format-detection" content="telephone=no" />
   <link rel="manifest" href="manifest.webmanifest?v=5810-market-identity-1" />
   <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=5810-market-identity-1" />
-  <link rel="stylesheet" href="style.css?v=5.9.5.2" />
+  <link rel="stylesheet" href="style.css?v=5.9.6" />
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
@@ -110,6 +110,25 @@
           <p id="reviewAnalysisHint" class="reviewAnalysisHint"></p>
           <div id="reviewCategorySummary" class="reviewCategorySummary hidden"></div>
           <div id="reviewChecks" class="reviewChecks hidden"></div>
+        </div>
+
+
+        <div id="reviewCloseCard" class="reviewCloseCard hidden">
+          <div><div class="label">Monatsabschluss</div><h2 id="reviewCloseTitle">Review noch offen</h2><p id="reviewCloseText">ATLAS prüft die Monatsdaten.</p></div>
+          <div class="reviewCloseActions"><button id="btnCloseReview" class="primary hidden" type="button">Monat abschließen</button><button id="btnReopenReview" class="secondary hidden" type="button">Monat wieder öffnen</button></div>
+          <p id="reviewCloseMsg" class="msg setupMsg"></p>
+        </div>
+
+        <div id="atlasStatementCard" class="atlasStatementCard hidden">
+          <div class="atlasStatementHead"><div><div class="label">ATLAS Statement</div><h2 id="atlasStatementTitle">–</h2></div><span class="setupStatusPill">Closed ✓</span></div>
+          <div class="atlasStatementHero"><span>Gesamtvermögen</span><b id="atlasStatementNet">–</b><small id="atlasStatementChange">–</small></div>
+          <div id="atlasStatementWealth" class="atlasStatementWealth"></div>
+          <div class="atlasStatementSection"><span>Cashflow</span><div id="atlasStatementCashflow" class="atlasStatementCashflow"></div></div>
+        </div>
+
+        <div class="statementHistoryCard">
+          <div class="reviewMiniHead"><div><span>Historie</span><b>Deine Monatsabschlüsse</b></div></div>
+          <div id="atlasStatementHistory" class="atlasStatementHistory"><div class="setupEmpty">Noch keine abgeschlossenen Monate.</div></div>
         </div>
 
         <div id="coachSignal" class="atlasSignal coachEmpty">
@@ -414,8 +433,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="firebase.js?v=5.9.5.2"></script>
-  <script src="app.js?v=5.9.5.2"></script>
+  <script src="firebase.js?v=5.9.6"></script>
+  <script src="app.js?v=5.9.6"></script>
 
   <script>
     if ('serviceWorker' in navigator) {
