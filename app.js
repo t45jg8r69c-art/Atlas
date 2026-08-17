@@ -700,6 +700,54 @@ async function loadMonthlyReview(month){
 function reviewActiveAccounts(){return (state.wealthSetup?.accounts||[]).filter(a=>a.status!=='archived')}
 function reviewRoleHint(role){return({CASH:'Cashflow',RESERVE:'Sicherheitsreserve',ALPHA:'ATLAS verbunden',BETA:'Langfristdepot',ASSET:'Vermögenswert'})[role]||role}
 function formatFileSize(bytes){const n=Number(bytes)||0;return n<1024*1024?`${Math.max(1,Math.round(n/1024))} KB`:`${(n/1024/1024).toFixed(1).replace('.',',')} MB`}
+
+function parseStatementMoney(raw){
+  if(raw==null)return null;
+  let s=String(raw).replace(/\s/g,'').replace(/EUR|€/gi,'');
+  const neg=/^-/.test(s)||/-$/.test(s);
+  s=s.replace(/[+\-]/g,'');
+  if(s.includes(',')&&s.includes('.'))s=s.replace(/\./g,'').replace(',','.');
+  else if(s.includes(','))s=s.replace(',','.');
+  else if((s.match(/\./g)||[]).length>1)s=s.replace(/\./g,'');
+  const n=Number(s.replace(/[^0-9.]/g,''));
+  return Number.isFinite(n)?(neg?-n:n):null;
+}
+function statementValueNear(text,labels){
+  const money='([+\-]?\s*\d{1,3}(?:[.\s]\d{3})*(?:,\d{2})|[+\-]?\s*\d+(?:,\d{2}))\s*(?:EUR|€)?';
+  for(const label of labels){
+    const re=new RegExp(label+'[^\n]{0,90}?'+money,'i');
+    const m=String(text||'').match(re); if(m){const v=parseStatementMoney(m[1]);if(v!=null)return v;}
+  }
+  return null;
+}
+function analyzeStatement(doc){
+  const text=String(doc?.text||'').replace(/\u00a0/g,' ');
+  const opening=statementValueNear(text,['Anfangssaldo','Anfangsbestand','alter Kontostand','Kontostand zu Beginn','Saldo Vortrag','Saldovortrag']);
+  const closing=statementValueNear(text,['Endsaldo','Schlusssaldo','neuer Kontostand','Kontostand am','Kontostand zum','Saldo neu']);
+  const income=statementValueNear(text,['Summe (?:der )?Gutschriften','Gutschriften gesamt','Habenumsatz','Summe Haben','Eingänge gesamt','Zahlungseingänge']);
+  let expenses=statementValueNear(text,['Summe (?:der )?Belastungen','Belastungen gesamt','Sollumsatz','Summe Soll','Ausgänge gesamt','Zahlungsausgänge']);
+  if(expenses!=null)expenses=Math.abs(expenses);
+  const transferHits=(text.match(/\b(?:Umbuchung|Depotübertrag|Eigenübertrag|interner Übertrag|eigene(?:s|n)? Konto|Übertrag auf)\b/gi)||[]).length;
+  const found=[opening,closing,income,expenses].filter(v=>v!=null).length;
+  return{opening,closing,income,expenses,transferHits,confidence:found>=4?'high':found>=2?'medium':'low'};
+}
+function euroExact(v){return v==null?'–':Number(v).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'}
+function renderFinancialIntelligence(docs={}){
+  const card=$('reviewAnalysis'),grid=$('reviewAnalysisGrid'),hint=$('reviewAnalysisHint'),pill=$('analysisConfidence'); if(!card||!grid)return;
+  const accounts=reviewActiveAccounts().filter(a=>a.role!=='ALPHA'&&docs[a.id]);
+  if(!accounts.length){card.classList.add('hidden');return;}
+  card.classList.remove('hidden');
+  const rows=accounts.map(a=>({account:a,analysis:analyzeStatement(docs[a.id])}));
+  const knownIncome=rows.filter(r=>r.analysis.income!=null); const knownExpenses=rows.filter(r=>r.analysis.expenses!=null);
+  const income=knownIncome.reduce((s,r)=>s+r.analysis.income,0), expenses=knownExpenses.reduce((s,r)=>s+r.analysis.expenses,0);
+  const cashflow=(knownIncome.length&&knownExpenses.length)?income-expenses:null;
+  const transfers=rows.reduce((s,r)=>s+r.analysis.transferHits,0);
+  grid.innerHTML=`<div><span>Einnahmen</span><b>${knownIncome.length?euroExact(income):'Noch nicht erkannt'}</b></div><div><span>Ausgaben</span><b>${knownExpenses.length?euroExact(expenses):'Noch nicht erkannt'}</b></div><div><span>Überschuss</span><b>${cashflow!=null?euroExact(cashflow):'Noch offen'}</b></div><div><span>Transfer-Hinweise</span><b>${transfers||'Keine erkannt'}</b></div>`+rows.map(r=>`<div class="analysisAccount"><span>${escapeHtml(r.account.name)}</span><b>${r.analysis.closing!=null?euroExact(r.analysis.closing):'Saldo nicht sicher erkannt'}</b><small>${r.analysis.opening!=null?'Start '+euroExact(r.analysis.opening)+' · ':''}${r.analysis.confidence==='high'?'hohe':r.analysis.confidence==='medium'?'mittlere':'geringe'} Erkennung</small></div>`).join('');
+  const lows=rows.filter(r=>r.analysis.confidence==='low').length;
+  if(pill)pill.textContent=lows?'Prüfung nötig':'Automatisch erkannt';
+  if(hint)hint.textContent=lows?'ATLAS zeigt nur Werte, die im Auszug eindeutig gefunden wurden. Nicht sicher erkannte Werte werden bewusst nicht geschätzt.':'Die wichtigsten Monatswerte wurden aus den Auszügen erkannt. Interne Transfers werden im nächsten Schritt kontenübergreifend abgeglichen.';
+}
+
 function paintMonthlyReview(month,docs={}){
   const listEl=$('reviewAccountList'); if(!listEl)return;
   const accounts=reviewActiveAccounts();
@@ -731,6 +779,7 @@ function paintMonthlyReview(month,docs={}){
     if(done===accounts.length){$('homeSignalTitle').textContent='Alles aktuell ✓';$('homeSignalText').textContent='Deine Finanzdaten für diesen Monat sind vollständig.';}
     else{$('homeSignalTitle').textContent='Monatsreview offen.';$('homeSignalText').textContent=`Noch ${accounts.length-done} ${accounts.length-done===1?'Datenquelle':'Datenquellen'} aktualisieren.`;}
   }
+  renderFinancialIntelligence(docs);
 }
 async function renderMonthlyReview(){
   const input=$('reviewMonth'); if(!input||!user)return;
@@ -748,7 +797,7 @@ async function handleStatementUpload(accountId,file){
     const [{text,pages},hash]=await Promise.all([pdfTextFromFile(file),statementHash(file)]);
     const identifier=String(account.identifier||'').replace(/\s/g,'');
     const identifierMatch=!identifier||text.replace(/\s/g,'').includes(identifier.slice(-4));
-    const payload={accountId,accountName:account.name||'Konto',accountRole:account.role||'',provider:account.provider||'',month,fileName:file.name,fileSize:file.size,fileModified:file.lastModified||null,pages,text,hash,identifierMatch,importedAt:new Date().toISOString(),parserVersion:'593-text-v1'};
+    const payload={accountId,accountName:account.name||'Konto',accountRole:account.role||'',provider:account.provider||'',month,fileName:file.name,fileSize:file.size,fileModified:file.lastModified||null,pages,text,hash,identifierMatch,importedAt:new Date().toISOString(),parserVersion:'594-intelligence-v1'};
     const nextStatements={...(monthlyReviewCache.month===month?monthlyReviewCache.statements:{}),[accountId]:payload};
     await reviewDocRef(month).set({month,statements:nextStatements,updatedAt:new Date().toISOString()});
     monthlyReviewCache.month=month; monthlyReviewCache.statements=nextStatements; monthlyReviewCache.loading=false;

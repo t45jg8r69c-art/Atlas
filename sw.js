@@ -2,9 +2,9 @@ const CACHE_NAME = 'atlas-v5.9.3-monthly-review-1';
 const APP_SHELL = [
   './',
   './index.html',
-  './style.css?v=593-monthly-review-1',
-  './app.js?v=593-monthly-review-1',
-  './firebase.js?v=593-monthly-review-1',
+  './style.css?v=594-financial-intelligence-1',
+  './app.js?v=594-financial-intelligence-1',
+  './firebase.js?v=594-financial-intelligence-1',
   './manifest.webmanifest',
   './offline.html',
   './icons/apple-touch-icon.png',
