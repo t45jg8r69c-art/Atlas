@@ -69,6 +69,8 @@ const defaultState={
 let state=structuredClone(defaultState), user=null, unsub=null, saving=false, saveQueued=false, savePromise=Promise.resolve(), saveTimer=null, cloudReady=false, selectedTradeId=null, lastLiveById={}, marketTimer=null, marketBusy=false, formDraft=null, formDirty=false, formMode='none', imageJobs={hkcm:null,tv:null};
 let currentScreen='home', navigationHistory=[];
 let monthlyReviewCache={month:null,statements:{},decisions:{},loading:false};
+let latestWealthValues={};
+let editingAccountId=null;
 const $=id=>document.getElementById(id);
 function fmt(n){const x=Number(n);return Number.isFinite(x)?x.toLocaleString('de-DE',{maximumFractionDigits:2}):'-'}
 function num(v){return Number(String(v??'').replace(',','.'))}
@@ -490,12 +492,25 @@ function safeRenderAll(){
 function upsertTrade(trade){const arr=state.activeTrades||[];const i=arr.findIndex(t=>t.id===trade.id);if(i>=0)arr[i]=trade;else arr.unshift(trade);state.activeTrades=arr;state.plan={...tradeTemplate,id:trade.id,market:trade.market,symbol:trade.symbol};selectedTradeId=trade.id}
 function removeActiveTrade(id){state.activeTrades=(state.activeTrades||[]).filter(t=>t.id!==id);if(selectedTradeId===id)selectedTradeId=null;const first=state.activeTrades[0];state.plan=first?{...tradeTemplate,id:first.id,market:first.market,symbol:first.symbol}:{...tradeTemplate};}
 function mainSectionFor(id){return ['plan','create','journal','challenge'].includes(id)?'alpha':id}
+function accountEffectiveValue(account){
+  const live=latestWealthValues?.[account.id];
+  const openingDate=String(account.openingDate||'');
+  if(live&&live.value!=null&&(!openingDate||String(live.date||'')>=openingDate))return Number(live.value)||0;
+  return Number(account.openingBalance)||0;
+}
+function accountEffectiveMeta(account){
+  const live=latestWealthValues?.[account.id];
+  const openingDate=String(account.openingDate||'');
+  if(live&&live.value!=null&&(!openingDate||String(live.date||'')>=openingDate))return{value:Number(live.value)||0,date:live.date||'',source:'PDF'};
+  return{value:Number(account.openingBalance)||0,date:openingDate,source:'Startwert'};
+}
 function refreshWealthShell(){
   const alpha=accountBalance(), pnl=journalPnl(), snap=challengeSnapshot();
   const accounts=(state.wealthSetup?.accounts||[]).filter(a=>a.status!=='archived');
-  const roleTotal=role=>accounts.filter(a=>a.role===role).reduce((sum,a)=>sum+(Number(a.openingBalance)||0),0);
+  const roleTotal=role=>accounts.filter(a=>a.role===role).reduce((sum,a)=>sum+accountEffectiveValue(a),0);
   const beta=roleTotal('BETA'), reserve=roleTotal('RESERVE'), cash=roleTotal('CASH'), assets=roleTotal('ASSET');
   const hasWealthSetup=accounts.length>0;
+  // ALPHA is sourced from the native ATLAS trading state, never double-counted from an account opening value.
   const netWorth=alpha+beta+reserve+cash+assets;
   if($('homeAlpha'))$('homeAlpha').textContent=euroShort(alpha);
   if($('homeBeta'))$('homeBeta').textContent=hasWealthSetup?euroShort(beta):'–';
@@ -509,11 +524,13 @@ function refreshWealthShell(){
   if(hasWealthSetup){
     if($('homeNetWorth'))$('homeNetWorth').textContent=euroShort(netWorth);
     if($('wealthNetWorth'))$('wealthNetWorth').textContent=euroShort(netWorth);
-    if($('homeNetWorthChange'))$('homeNetWorthChange').textContent='Performance wird ab dem ersten Monatsreview berechnet.';
+    if($('homeNetWorthChange'))$('homeNetWorthChange').textContent='Performance wird aus bestätigten Stichtagswerten aufgebaut.';
     if($('homeSignalTitle'))$('homeSignalTitle').textContent='Monatsreview bereit.';
-    if($('homeSignalText'))$('homeSignalText').textContent='Aktualisiere im Coach einmal im Monat deine Kontodaten.';
+    if($('homeSignalText'))$('homeSignalText').textContent='ATLAS nutzt je Konto automatisch den jüngsten bestätigten Wert.';
     if($('homeSignalAction')){ $('homeSignalAction').textContent='Coach öffnen'; $('homeSignalAction').dataset.mainTarget='coach'; }
   }else{
+    if($('homeNetWorth'))$('homeNetWorth').textContent=euroShort(alpha);
+    if($('wealthNetWorth'))$('wealthNetWorth').textContent=euroShort(alpha);
     if($('homeSignalTitle'))$('homeSignalTitle').textContent='Financial Setup einrichten.';
     if($('homeSignalText'))$('homeSignalText').textContent='Lege Regeln, Konten und dein Vermögensziel zentral fest.';
     if($('homeSignalAction')){ $('homeSignalAction').textContent='Setup öffnen'; $('homeSignalAction').dataset.mainTarget='setup'; }
@@ -521,6 +538,34 @@ function refreshWealthShell(){
   if($('alphaCapital'))$('alphaCapital').textContent=euroShort(alpha);
   if($('alphaLifetime'))$('alphaLifetime').textContent=euroShort(pnl);
   if($('alphaChallenge'))$('alphaChallenge').textContent=snap.done+' / '+CHALLENGE_BOXES;
+}
+async function loadLatestWealthValues(){
+  if(!user)return;
+  try{
+    const snap=await atlasFirebase.db.collection('users').doc(user.uid).collection('atlas').where('month','>=','0000-00').get();
+    const docs=[]; snap.forEach(d=>{const x=d.data();if(x&&x.month&&x.statements)docs.push(x)});
+    docs.sort((a,b)=>String(b.month).localeCompare(String(a.month)));
+    const next={};
+    for(const doc of docs){
+      for(const account of (state.wealthSetup?.accounts||[])){
+        if(account.role==='ALPHA'||next[account.id]||!doc.statements?.[account.id])continue;
+        const analysis=analyzeStatement(doc.statements[account.id],account);
+        if(analysis?.closing!=null){
+          const st=doc.statements[account.id];
+          const date=(String(st.text||'').match(/(?:Stichtag|Stand(?:\s+per)?|Kontoauszug\s+vom)\s*(?:am|zum)?\s*(\d{1,2}[.\s][A-Za-zäöüÄÖÜ]+\s+\d{4}|\d{2}\.\d{2}\.\d{4})/i)||[])[1]||doc.month+'-28';
+          next[account.id]={value:analysis.closing,date:normalizeWealthDate(date,doc.month),source:'PDF',month:doc.month,fileName:st.fileName||''};
+        }
+      }
+    }
+    latestWealthValues=next; refreshWealthShell(); renderAccountList();
+  }catch(e){console.error('Latest wealth values load failed',e);refreshWealthShell();}
+}
+function normalizeWealthDate(raw,fallbackMonth){
+  const x=String(raw||'').trim();
+  const m=x.match(/(\d{2})\.(\d{2})\.(\d{4})/);if(m)return`${m[3]}-${m[2]}-${m[1]}`;
+  const months={januar:'01',februar:'02',märz:'03',april:'04',mai:'05',juni:'06',juli:'07',august:'08',september:'09',oktober:'10',november:'11',dezember:'12'};
+  const w=x.toLowerCase().match(/(\d{1,2})[.\s]+([a-zäöü]+)\s+(\d{4})/);if(w&&months[w[2]])return`${w[3]}-${months[w[2]]}-${String(w[1]).padStart(2,'0')}`;
+  return String(fallbackMonth||'')+'-28';
 }
 function makeNav(){
   const html=tabs.map((t,i)=>`<button data-tab="${t[0]}" class="${i?'':'active'}">${t[1]}</button>`).join('');
@@ -600,10 +645,16 @@ function renderAccountList(){
   const list=[...(wealthSetup().accounts||[])];
   if(!list.length){$('accountList').innerHTML='<div class="setupEmpty">Noch keine Konten eingerichtet.</div>';return;}
   const active=list.filter(a=>a.status!=='archived'), archived=list.filter(a=>a.status==='archived');
-  const row=a=>{const freq=a.updateFrequency||'monthly';const freqLabel={monthly:'Monatlich',annual:'Jährlich',manual:'Manuell'}[freq]||'Monatlich';return `<div class="setupAccountRow ${a.status==='archived'?'archived':''}"><div><b>${escapeHtml(a.name||'Konto')}</b><span>${escapeHtml(a.provider||'')} · ${escapeHtml(accountRoleLabel(a.role))}${a.identifier?' · ••••'+escapeHtml(String(a.identifier).slice(-4)):''} · ${freqLabel}</span></div><div class="setupAccountActions"><button class="smallBtn" data-account-frequency="${escapeHtml(a.id)}" type="button">${freqLabel}</button><button class="smallBtn" data-account-toggle="${escapeHtml(a.id)}" type="button">${a.status==='archived'?'Reaktivieren':'Archivieren'}</button></div></div>`};
+  const row=a=>{const freq=a.updateFrequency||'monthly';const freqLabel={monthly:'Monatlich',annual:'Jährlich',manual:'Manuell'}[freq]||'Monatlich';const meta=accountEffectiveMeta(a);const current=meta.date?`${euroExact(meta.value)} · ${meta.date} · ${meta.source}`:`${euroExact(meta.value)} · ${meta.source}`;return `<div class="setupAccountRow ${a.status==='archived'?'archived':''}"><div><b>${escapeHtml(a.name||'Konto')}</b><span>${escapeHtml(a.provider||'')} · ${escapeHtml(accountRoleLabel(a.role))}${a.identifier?' · ••••'+escapeHtml(String(a.identifier).slice(-4)):''} · ${freqLabel}</span><small>Start: ${euroExact(Number(a.openingBalance)||0)}${a.openingDate?' · '+escapeHtml(a.openingDate):''} · Aktuell: ${escapeHtml(current)}</small></div><div class="setupAccountActions"><button class="smallBtn" data-account-edit="${escapeHtml(a.id)}" type="button">Bearbeiten</button><button class="smallBtn" data-account-frequency="${escapeHtml(a.id)}" type="button">${freqLabel}</button><button class="smallBtn" data-account-toggle="${escapeHtml(a.id)}" type="button">${a.status==='archived'?'Reaktivieren':'Archivieren'}</button></div></div>`};
   $('accountList').innerHTML=active.map(row).join('')+(archived.length?`<div class="setupArchivedLabel">Archiviert</div>${archived.map(row).join('')}`:'');
   document.querySelectorAll('[data-account-toggle]').forEach(b=>b.onclick=()=>toggleAccountStatus(b.dataset.accountToggle));
   document.querySelectorAll('[data-account-frequency]').forEach(b=>b.onclick=()=>cycleAccountFrequency(b.dataset.accountFrequency));
+  document.querySelectorAll('[data-account-edit]').forEach(b=>b.onclick=()=>editAccount(b.dataset.accountEdit));
+}
+function editAccount(id){
+  const a=(wealthSetup().accounts||[]).find(x=>x.id===id);if(!a)return;editingAccountId=id;toggleAccountForm(true);
+  $('accountName').value=a.name||'';$('accountProvider').value=a.provider||'';$('accountRole').value=a.role||'CASH';$('accountFrequency').value=a.updateFrequency||'monthly';$('accountIdentifier').value=a.identifier||'';$('accountOpeningBalance').value=Number(a.openingBalance)||0;$('accountOpeningDate').value=a.openingDate||new Date().toISOString().slice(0,10);
+  if($('btnAddAccount'))$('btnAddAccount').textContent='Änderungen speichern';
 }
 function toggleAccountForm(showForm=true){
   const form=$('accountForm'); if(!form)return;
@@ -612,6 +663,7 @@ function toggleAccountForm(showForm=true){
   if(!showForm&&$('setupAccountMsg'))$('setupAccountMsg').textContent='';
 }
 function clearAccountForm(){
+  editingAccountId=null;if($('btnAddAccount'))$('btnAddAccount').textContent='Konto speichern';
   ['accountName','accountProvider','accountIdentifier','accountOpeningBalance'].forEach(id=>{if($(id))$(id).value=''});
   if($('accountRole'))$('accountRole').value='CASH';
   if($('accountFrequency'))$('accountFrequency').value='monthly';
@@ -621,19 +673,9 @@ function addAccount(){
   const name=String($('accountName')?.value||'').trim();
   if(!name){$('setupAccountMsg').textContent='Bitte einen Kontonamen angeben.';return;}
   const ws=wealthSetup();
-  ws.accounts=[...(ws.accounts||[]),{
-    id:'acc_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),
-    name,
-    provider:String($('accountProvider')?.value||'').trim(),
-    role:$('accountRole')?.value||'CASH',
-    identifier:String($('accountIdentifier')?.value||'').trim(),
-    openingBalance:setupNumber('accountOpeningBalance',0),
-    openingDate:$('accountOpeningDate')?.value||new Date().toISOString().slice(0,10),
-    updateFrequency:$('accountFrequency')?.value||'monthly',
-    status:'active',
-    createdAt:new Date().toISOString()
-  }];
-  state.wealthSetup=ws; clearAccountForm(); toggleAccountForm(false); renderAccountList(); scheduleSave();
+  const values={name,provider:String($('accountProvider')?.value||'').trim(),role:$('accountRole')?.value||'CASH',identifier:String($('accountIdentifier')?.value||'').trim(),openingBalance:setupNumber('accountOpeningBalance',0),openingDate:$('accountOpeningDate')?.value||new Date().toISOString().slice(0,10),updateFrequency:$('accountFrequency')?.value||'monthly',updatedAt:new Date().toISOString()};
+  if(editingAccountId){ws.accounts=(ws.accounts||[]).map(a=>a.id===editingAccountId?{...a,...values}:a);}else{ws.accounts=[...(ws.accounts||[]),{id:'acc_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),...values,status:'active',createdAt:new Date().toISOString()}];}
+  state.wealthSetup=ws; clearAccountForm(); toggleAccountForm(false); renderAccountList(); refreshWealthShell(); scheduleSave();
 }
 
 function cycleAccountFrequency(id){
@@ -998,7 +1040,7 @@ async function handleStatementUpload(accountId,file){
     const [{text,pages},hash]=await Promise.all([pdfTextFromFile(file),statementHash(file)]);
     const identifier=String(account.identifier||'').replace(/\s/g,'');
     const identifierMatch=!identifier||text.replace(/\s/g,'').includes(identifier.slice(-4));
-    const payload={accountId,accountName:account.name||'Konto',accountRole:account.role||'',provider:account.provider||'',month,fileName:file.name,fileSize:file.size,fileModified:file.lastModified||null,pages,text,hash,identifierMatch,importedAt:new Date().toISOString(),parserVersion:'595-categories-review-v1'};
+    const payload={accountId,accountName:account.name||'Konto',accountRole:account.role||'',provider:account.provider||'',month,fileName:file.name,fileSize:file.size,fileModified:file.lastModified||null,pages,text,hash,identifierMatch,importedAt:new Date().toISOString(),parserVersion:'5951-wealth-foundation-v1'};
     const nextStatements={...(monthlyReviewCache.month===month?monthlyReviewCache.statements:{}),[accountId]:payload};
     await reviewDocRef(month).set({month,statements:nextStatements,decisions:monthlyReviewCache.decisions||{},updatedAt:new Date().toISOString()},{merge:true});
     monthlyReviewCache.month=month; monthlyReviewCache.statements=nextStatements; monthlyReviewCache.loading=false;
@@ -1008,7 +1050,7 @@ async function handleStatementUpload(accountId,file){
 }
 async function removeStatement(accountId){
   if(!user)return; const month=$('reviewMonth')?.value||currentMonthKey();
-  try{const nextStatements={...(monthlyReviewCache.statements||{})};delete nextStatements[accountId];await reviewDocRef(month).set({month,statements:nextStatements,decisions:monthlyReviewCache.decisions||{},updatedAt:new Date().toISOString()},{merge:true});monthlyReviewCache.statements=nextStatements;if($('reviewMsg'))$('reviewMsg').textContent='Kontoauszug entfernt.';paintMonthlyReview(month,nextStatements);}catch(e){console.error(e);if($('reviewMsg'))$('reviewMsg').textContent='Kontoauszug konnte nicht entfernt werden.';}
+  try{const nextStatements={...(monthlyReviewCache.statements||{})};delete nextStatements[accountId];await reviewDocRef(month).set({month,statements:nextStatements,decisions:monthlyReviewCache.decisions||{},updatedAt:new Date().toISOString()},{merge:true});monthlyReviewCache.statements=nextStatements;if($('reviewMsg'))$('reviewMsg').textContent='Kontoauszug entfernt.';paintMonthlyReview(month,nextStatements);loadLatestWealthValues();}catch(e){console.error(e);if($('reviewMsg'))$('reviewMsg').textContent='Kontoauszug konnte nicht entfernt werden.';}
 }
 function cloudMsg(t){
   if($('cloudState'))$('cloudState').textContent=t;
@@ -1104,7 +1146,7 @@ async function login(){try{await atlasFirebase.auth.signInWithEmailAndPassword($
 async function register(){try{await atlasFirebase.auth.createUserWithEmailAndPassword($('authEmail').value.trim(),$('authPassword').value);$('authMsg').textContent=''}catch(e){$('authMsg').textContent=authError(e)}}
 function authError(e){console.error(e);if(e.code==='auth/email-already-in-use')return 'Diese E-Mail ist bereits registriert. Bitte anmelden.';if(e.code==='auth/invalid-credential'||e.code==='auth/wrong-password')return 'Anmeldung fehlgeschlagen. E-Mail oder Passwort prüfen.';if(e.code==='auth/weak-password')return 'Passwort muss mindestens 6 Zeichen haben.';return 'Fehler: '+(e.message||e.code)}
 atlasFirebase.auth.onAuthStateChanged(u=>{user=u;if(u){$('authScreen').classList.add('hidden');$('app').classList.remove('hidden');cloudMsg('Cloud verbunden');startCloud(u.uid)}else{cloudReady=false;saveQueued=false;clearTimeout(saveTimer);$('authScreen').classList.remove('hidden');$('app').classList.add('hidden');if(unsub){unsub();unsub=null}stopMarketEngine()}});
-function renderAll(){safeRenderAll();renderFinancialSetup()}
+function renderAll(){safeRenderAll();renderFinancialSetup();refreshWealthShell();setTimeout(loadLatestWealthValues,0)}
 function blankTrade(){return {...tradeTemplate,id:uid(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}}
 function emptyTradeDraft(){
   const now=new Date().toISOString();

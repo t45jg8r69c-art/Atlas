@@ -1,10 +1,10 @@
-const CACHE_NAME = 'atlas-v5.9.5-categories-review-1';
+const CACHE_NAME = 'atlas-v5.9.5.1-wealth-foundation-1';
 const APP_SHELL = [
   './',
   './index.html',
-  './style.css?v=595-categories-review-1',
-  './app.js?v=595-categories-review-1',
-  './firebase.js?v=595-categories-review-1',
+  './style.css?v=5951-wealth-foundation-1',
+  './app.js?v=5951-wealth-foundation-1',
+  './firebase.js?v=5951-wealth-foundation-1',
   './manifest.webmanifest',
   './offline.html',
   './icons/apple-touch-icon.png',
