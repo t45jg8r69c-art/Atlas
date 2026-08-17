@@ -40,15 +40,34 @@ const LIVE_FRESH_MS=120000;
 const LIVE_STALE_MS=600000;
 const LIVE_ERROR_THRESHOLD=3;
 const tradeTemplate={brokerAccount:'Nicht zugeordnet',market:'Dow Jones Future',symbol:'YM=F',direction:'Long',positionStatus:'active',contracts:1,pointValue:1,entry:52900,target:54045,stop:52380,current:52988,previousPrice:null,lastPrice:null,liveUpdatedAt:null,dataSource:null,entryTriggerSide:null,entryTriggeredAt:null,brainState:'waiting',mentorState:null,originalPlan:null,deviations:[],zone:53500,why:'Laufende blaue Welle (v)\nEinstieg auf relevantem Fib-Niveau der Subwelle (ii)',rule:'Triff keine neue Entscheidung. Überprüfe zuerst deine ursprüngliche Entscheidung.',hkcm:'',tv:'',createdAt:null,updatedAt:null};
+const defaultWealthSetup={
+  strategy:{
+    reserveMonths:6,
+    alphaMax:30000,
+    milestone:20000,
+    cashoutPercent:90,
+    betaRole:'primary',
+    metalsTarget:10,
+    metalsTolerance:2,
+    allocation:'dynamic',
+    betaToAlphaLocked:true,
+    changedAt:null
+  },
+  accounts:[],
+  goal:{target:1000000,milestone:20000,changedAt:null},
+  ruleHistory:[]
+};
 const defaultState={
   plan:{...tradeTemplate},
   activeTrades:[],
   trades:[],
   challenge:[],
   settings:{autoYahoo:false,accountStart:0},
+  wealthSetup:structuredClone(defaultWealthSetup),
   updatedAt:null
 };
 let state=structuredClone(defaultState), user=null, unsub=null, saving=false, saveQueued=false, savePromise=Promise.resolve(), saveTimer=null, cloudReady=false, selectedTradeId=null, lastLiveById={}, marketTimer=null, marketBusy=false, formDraft=null, formDirty=false, formMode='none', imageJobs={hkcm:null,tv:null};
+let currentScreen='home', navigationHistory=[];
 const $=id=>document.getElementById(id);
 function fmt(n){const x=Number(n);return Number.isFinite(x)?x.toLocaleString('de-DE',{maximumFractionDigits:2}):'-'}
 function num(v){return Number(String(v??'').replace(',','.'))}
@@ -387,6 +406,15 @@ function mentorFor(p,tradeStateResult){
 function normalizeState(data={}){
   const hasActiveTradesField=Object.prototype.hasOwnProperty.call(data,'activeTrades');
   let s={...structuredClone(defaultState),...data,settings:{...defaultState.settings,...(data.settings||{})}};
+  const incomingSetup=data.wealthSetup||{};
+  s.wealthSetup={
+    ...structuredClone(defaultWealthSetup),
+    ...incomingSetup,
+    strategy:{...defaultWealthSetup.strategy,...(incomingSetup.strategy||{})},
+    goal:{...defaultWealthSetup.goal,...(incomingSetup.goal||{})},
+    accounts:Array.isArray(incomingSetup.accounts)?incomingSetup.accounts:[],
+    ruleHistory:Array.isArray(incomingSetup.ruleHistory)?incomingSetup.ruleHistory:[]
+  };
   if(!Array.isArray(s.activeTrades))s.activeTrades=[];
   if(!Array.isArray(s.trades))s.trades=[];
   if(!Array.isArray(s.challenge))s.challenge=[];
@@ -463,8 +491,25 @@ function removeActiveTrade(id){state.activeTrades=(state.activeTrades||[]).filte
 function mainSectionFor(id){return ['plan','create','journal','challenge'].includes(id)?'alpha':id}
 function refreshWealthShell(){
   const alpha=accountBalance(), pnl=journalPnl(), snap=challengeSnapshot();
+  const accounts=(state.wealthSetup?.accounts||[]).filter(a=>a.status!=='archived');
+  const roleTotal=role=>accounts.filter(a=>a.role===role).reduce((sum,a)=>sum+(Number(a.openingBalance)||0),0);
+  const beta=roleTotal('BETA'), reserve=roleTotal('RESERVE'), cash=roleTotal('CASH'), assets=roleTotal('ASSET');
+  const hasWealthSetup=accounts.length>0;
+  const netWorth=alpha+beta+reserve+cash+assets;
   if($('homeAlpha'))$('homeAlpha').textContent=euroShort(alpha);
+  if($('homeBeta'))$('homeBeta').textContent=hasWealthSetup?euroShort(beta):'–';
+  if($('homeReserve'))$('homeReserve').textContent=hasWealthSetup?euroShort(reserve):'–';
+  if($('homeCashAssets'))$('homeCashAssets').textContent=hasWealthSetup?euroShort(cash+assets):'–';
   if($('wealthAlpha'))$('wealthAlpha').textContent=euroShort(alpha);
+  if($('wealthBeta'))$('wealthBeta').textContent=hasWealthSetup?euroShort(beta):'–';
+  if($('wealthReserve'))$('wealthReserve').textContent=hasWealthSetup?euroShort(reserve):'–';
+  if($('wealthAssets'))$('wealthAssets').textContent=hasWealthSetup?euroShort(assets):'–';
+  if($('wealthCash'))$('wealthCash').textContent=hasWealthSetup?euroShort(cash):'–';
+  if(hasWealthSetup){
+    if($('homeNetWorth'))$('homeNetWorth').textContent=euroShort(netWorth);
+    if($('wealthNetWorth'))$('wealthNetWorth').textContent=euroShort(netWorth);
+    if($('homeNetWorthChange'))$('homeNetWorthChange').textContent='Performance wird ab dem ersten Monatsreview berechnet.';
+  }
   if($('alphaCapital'))$('alphaCapital').textContent=euroShort(alpha);
   if($('alphaLifetime'))$('alphaLifetime').textContent=euroShort(pnl);
   if($('alphaChallenge'))$('alphaChallenge').textContent=snap.done+' / '+CHALLENGE_BOXES;
@@ -475,15 +520,122 @@ function makeNav(){
   document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.tab)));
   document.querySelectorAll('[data-alpha-target]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.alphaTarget)));
   document.querySelectorAll('[data-main-target]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.mainTarget)));
+  document.querySelectorAll('[data-atlas-back]').forEach(b=>b.addEventListener('click',goBack));
 }
-function show(id){
+function show(id,options={}){
+  const next=$(id)?id:'home';
+  const track=options.track!==false;
+  if(track&&next!==currentScreen){
+    navigationHistory.push(currentScreen);
+    if(navigationHistory.length>30)navigationHistory.shift();
+  }
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-  const target=$(id)||$('home'); target.classList.add('active');
-  const main=mainSectionFor(id);
+  const target=$(next)||$('home'); target.classList.add('active');
+  currentScreen=next;
+  const main=mainSectionFor(next);
   document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===main));
-  if(id==='create'){if(!formDraft){formMode='new';formDraft=emptyTradeDraft();formDirty=false;clearFileInputs()}loadForm(formDraft);}
+  if(next==='create'){if(!formDraft){formMode='new';formDraft=emptyTradeDraft();formDirty=false;clearFileInputs()}loadForm(formDraft);}
+  if(next==='setup')renderFinancialSetup();
   refreshWealthShell();
   scrollTo(0,0);
+}
+function goBack(){
+  let previous=navigationHistory.pop();
+  while(previous===currentScreen&&navigationHistory.length)previous=navigationHistory.pop();
+  show(previous||'home',{track:false});
+}
+function wealthSetup(){return state.wealthSetup||structuredClone(defaultWealthSetup)}
+function setupNumber(id,fallback=0){const el=$(id);const v=Number(el?.value);return Number.isFinite(v)?v:fallback}
+function strategySummaryChanged(before,after){return JSON.stringify(before)!==JSON.stringify(after)}
+function renderFinancialSetup(){
+  if(!$('ruleReserveMonths'))return;
+  const ws=wealthSetup(), r=ws.strategy||defaultWealthSetup.strategy, g=ws.goal||defaultWealthSetup.goal;
+  $('ruleReserveMonths').value=r.reserveMonths??6;
+  $('ruleAlphaMax').value=r.alphaMax??30000;
+  $('ruleMilestone').value=r.milestone??20000;
+  $('ruleCashout').value=r.cashoutPercent??90;
+  $('ruleMetalsTarget').value=r.metalsTarget??10;
+  $('ruleMetalsTolerance').value=r.metalsTolerance??2;
+  $('goalTarget').value=g.target??1000000;
+  $('goalMilestone').value=g.milestone??20000;
+  renderAccountList();
+  updateGoalMilestones();
+}
+function saveStrategy(){
+  const ws=wealthSetup(), before={...(ws.strategy||defaultWealthSetup.strategy)};
+  const after={
+    ...before,
+    reserveMonths:Math.max(1,setupNumber('ruleReserveMonths',6)),
+    alphaMax:Math.max(0,setupNumber('ruleAlphaMax',30000)),
+    milestone:Math.max(1000,setupNumber('ruleMilestone',20000)),
+    cashoutPercent:Math.min(100,Math.max(0,setupNumber('ruleCashout',90))),
+    betaRole:'primary',
+    metalsTarget:Math.min(100,Math.max(0,setupNumber('ruleMetalsTarget',10))),
+    metalsTolerance:Math.min(20,Math.max(0,setupNumber('ruleMetalsTolerance',2))),
+    allocation:'dynamic',
+    betaToAlphaLocked:true,
+    changedAt:new Date().toISOString()
+  };
+  if(strategySummaryChanged(before,after)){
+    ws.ruleHistory=[...(ws.ruleHistory||[]),{type:'strategy',validFrom:after.changedAt,previous:before,value:after}].slice(-100);
+  }
+  ws.strategy=after; state.wealthSetup=ws;
+  $('strategyMsg').textContent='Strategie gespeichert.';
+  $('strategySavedPill').textContent='Gespeichert';
+  scheduleSave();
+}
+function accountRoleLabel(role){return({CASH:'Cash',RESERVE:'Reserve',ALPHA:'Alpha',BETA:'Beta',ASSET:'Asset'})[role]||role}
+function renderAccountList(){
+  if(!$('accountList'))return;
+  const list=[...(wealthSetup().accounts||[])];
+  if(!list.length){$('accountList').innerHTML='<div class="setupEmpty">Noch keine Konten eingerichtet.</div>';return;}
+  const active=list.filter(a=>a.status!=='archived'), archived=list.filter(a=>a.status==='archived');
+  const row=a=>`<div class="setupAccountRow ${a.status==='archived'?'archived':''}"><div><b>${escapeHtml(a.name||'Konto')}</b><span>${escapeHtml(a.provider||'')} · ${escapeHtml(accountRoleLabel(a.role))}${a.identifier?' · ••••'+escapeHtml(String(a.identifier).slice(-4)):''}</span></div><button class="smallBtn" data-account-toggle="${escapeHtml(a.id)}" type="button">${a.status==='archived'?'Reaktivieren':'Archivieren'}</button></div>`;
+  $('accountList').innerHTML=active.map(row).join('')+(archived.length?`<div class="setupArchivedLabel">Archiviert</div>${archived.map(row).join('')}`:'');
+  document.querySelectorAll('[data-account-toggle]').forEach(b=>b.onclick=()=>toggleAccountStatus(b.dataset.accountToggle));
+}
+function toggleAccountForm(showForm=true){
+  const form=$('accountForm'); if(!form)return;
+  form.classList.toggle('hidden',!showForm);
+  if(showForm&&$('accountOpeningDate')&&!$('accountOpeningDate').value)$('accountOpeningDate').value=new Date().toISOString().slice(0,10);
+  if(!showForm&&$('setupAccountMsg'))$('setupAccountMsg').textContent='';
+}
+function clearAccountForm(){
+  ['accountName','accountProvider','accountIdentifier','accountOpeningBalance'].forEach(id=>{if($(id))$(id).value=''});
+  if($('accountRole'))$('accountRole').value='CASH';
+  if($('accountOpeningDate'))$('accountOpeningDate').value=new Date().toISOString().slice(0,10);
+}
+function addAccount(){
+  const name=String($('accountName')?.value||'').trim();
+  if(!name){$('setupAccountMsg').textContent='Bitte einen Kontonamen angeben.';return;}
+  const ws=wealthSetup();
+  ws.accounts=[...(ws.accounts||[]),{
+    id:'acc_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),
+    name,
+    provider:String($('accountProvider')?.value||'').trim(),
+    role:$('accountRole')?.value||'CASH',
+    identifier:String($('accountIdentifier')?.value||'').trim(),
+    openingBalance:setupNumber('accountOpeningBalance',0),
+    openingDate:$('accountOpeningDate')?.value||new Date().toISOString().slice(0,10),
+    status:'active',
+    createdAt:new Date().toISOString()
+  }];
+  state.wealthSetup=ws; clearAccountForm(); toggleAccountForm(false); renderAccountList(); scheduleSave();
+}
+function toggleAccountStatus(id){
+  const ws=wealthSetup(), now=new Date().toISOString();
+  ws.accounts=(ws.accounts||[]).map(a=>a.id===id?{...a,status:a.status==='archived'?'active':'archived',statusChangedAt:now}:a);
+  state.wealthSetup=ws; renderAccountList(); scheduleSave();
+}
+function updateGoalMilestones(){
+  if(!$('goalMilestones'))return;
+  const target=Math.max(0,setupNumber('goalTarget',1000000)), step=Math.max(1,setupNumber('goalMilestone',20000));
+  const count=Math.ceil(target/step); $('goalMilestones').textContent=count+' Meilensteine';
+}
+function saveGoal(){
+  const ws=wealthSetup(), target=Math.max(0,setupNumber('goalTarget',1000000)), milestone=Math.max(1000,setupNumber('goalMilestone',20000));
+  ws.goal={target,milestone,changedAt:new Date().toISOString()}; state.wealthSetup=ws;
+  $('goalMsg').textContent='Ziel gespeichert.'; updateGoalMilestones(); scheduleSave();
 }
 function cloudMsg(t){
   if($('cloudState'))$('cloudState').textContent=t;
@@ -579,7 +731,7 @@ async function login(){try{await atlasFirebase.auth.signInWithEmailAndPassword($
 async function register(){try{await atlasFirebase.auth.createUserWithEmailAndPassword($('authEmail').value.trim(),$('authPassword').value);$('authMsg').textContent=''}catch(e){$('authMsg').textContent=authError(e)}}
 function authError(e){console.error(e);if(e.code==='auth/email-already-in-use')return 'Diese E-Mail ist bereits registriert. Bitte anmelden.';if(e.code==='auth/invalid-credential'||e.code==='auth/wrong-password')return 'Anmeldung fehlgeschlagen. E-Mail oder Passwort prüfen.';if(e.code==='auth/weak-password')return 'Passwort muss mindestens 6 Zeichen haben.';return 'Fehler: '+(e.message||e.code)}
 atlasFirebase.auth.onAuthStateChanged(u=>{user=u;if(u){$('authScreen').classList.add('hidden');$('app').classList.remove('hidden');cloudMsg('Cloud verbunden');startCloud(u.uid)}else{cloudReady=false;saveQueued=false;clearTimeout(saveTimer);$('authScreen').classList.remove('hidden');$('app').classList.add('hidden');if(unsub){unsub();unsub=null}stopMarketEngine()}});
-function renderAll(){safeRenderAll()}
+function renderAll(){safeRenderAll();renderFinancialSetup()}
 function blankTrade(){return {...tradeTemplate,id:uid(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}}
 function emptyTradeDraft(){
   const now=new Date().toISOString();
@@ -1093,7 +1245,7 @@ function milestoneDates(done){const trades=[...(state.trades||[])].reverse();let
 function renderChallenge(){const snap=challengeSnapshot();if($('accountStart'))$('accountStart').value=state.settings.accountStart||'';$('accountBalance').textContent=euroShort(snap.balance);$('journalProfit').textContent=euroShort(snap.pnl);$('wealthNow').textContent=snap.done+' / '+CHALLENGE_BOXES;$('wealthPct').textContent=snap.pct+'%';$('wealthOpen').textContent=euroShort(snap.open);$('nextMilestone').textContent=snap.done>=CHALLENGE_BOXES?'Ziel erreicht':euroShort(snap.next);const bar=$('wealthBar');if(bar)bar.style.width=snap.pct+'%';const dates=milestoneDates(snap.done);$('boxes').innerHTML=Array.from({length:CHALLENGE_BOXES},(_,i)=>{const n=i+1, amount=n*CHALLENGE_BOX_VALUE, done=n<=snap.done;return `<div class="box ${done?'done':''}"><b>${n}</b><span>${euroShort(amount)}</span><small>${done?(dates[n]||'erreicht'):''}</small></div>`}).join('')}
 function marketSelect(){const val=$('fMarketSelect').value;const m=markets.find(x=>x[0]===val);if(!m)return;if(val!=='CUSTOM'){$('fSymbol').value=m[0];$('fMarket').value=m[2]}}
 function clock(){$('clockPill').textContent=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}
-function boot(){makeNav();$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnNewTrade').onclick=startNewTrade;$('btnBackDesk').onclick=()=>{selectedTradeId=null;renderPlan();scrollTo(0,0)};$('btnEditTrade').onclick=editSelectedTrade;if($('btnDeleteActiveTrade'))$('btnDeleteActiveTrade').onclick=deleteActiveTrade;if($('closeMode'))$('closeMode').onchange=()=>renderPlan();if($('closePrice'))$('closePrice').oninput=()=>renderPlan();$('btnExportJournal').onclick=exportJournal;if($('btnSaveAccount'))$('btnSaveAccount').onclick=saveAccountBase;$('fMarketSelect').onchange=()=>{marketSelect();markFormDirty();renderDeviationPanel()};
+function boot(){makeNav();if($('btnSaveStrategy'))$('btnSaveStrategy').onclick=saveStrategy;if($('btnToggleAccountForm'))$('btnToggleAccountForm').onclick=()=>toggleAccountForm(true);if($('btnCancelAccount'))$('btnCancelAccount').onclick=()=>toggleAccountForm(false);if($('btnAddAccount'))$('btnAddAccount').onclick=addAccount;if($('btnSaveGoal'))$('btnSaveGoal').onclick=saveGoal;if($('goalTarget'))$('goalTarget').addEventListener('input',updateGoalMilestones);if($('goalMilestone'))$('goalMilestone').addEventListener('input',updateGoalMilestones);$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnNewTrade').onclick=startNewTrade;$('btnBackDesk').onclick=()=>{selectedTradeId=null;renderPlan();scrollTo(0,0)};$('btnEditTrade').onclick=editSelectedTrade;if($('btnDeleteActiveTrade'))$('btnDeleteActiveTrade').onclick=deleteActiveTrade;if($('closeMode'))$('closeMode').onchange=()=>renderPlan();if($('closePrice'))$('closePrice').oninput=()=>renderPlan();$('btnExportJournal').onclick=exportJournal;if($('btnSaveAccount'))$('btnSaveAccount').onclick=saveAccountBase;$('fMarketSelect').onchange=()=>{marketSelect();markFormDirty();renderDeviationPanel()};
   ['fBrokerAccount','fMarket','fSymbol','fDirection','fPositionStatus','fContracts','fPointValue','fEntry','fStop','fTarget','fZone','fWhy','fRule'].forEach(id=>{
     const el=$(id);if(!el)return;
     el.addEventListener('input',()=>{markFormDirty();renderDeviationPanel()});

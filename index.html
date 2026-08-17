@@ -12,7 +12,7 @@
   <meta name="format-detection" content="telephone=no" />
   <link rel="manifest" href="manifest.webmanifest?v=5810-market-identity-1" />
   <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=5810-market-identity-1" />
-  <link rel="stylesheet" href="style.css?v=5901-alpha-home-back-1" />
+  <link rel="stylesheet" href="style.css?v=592-financial-setup-1" />
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
@@ -40,12 +40,14 @@
         <div class="tag">WEALTH NAVIGATOR</div>
       </div>
       <nav id="nav" class="nav"></nav>
+      <button class="setupNavBtn" data-main-target="setup" type="button">⚙ Financial Setup</button>
       <div class="cloudBox">
         <div id="cloudState">Cloud wird verbunden...</div>
         <button id="btnLogout" class="smallBtn">Abmelden</button>
       </div>
     </aside>
 
+    <button class="mobileSetupBtn" data-main-target="setup" type="button" aria-label="Financial Setup">⚙</button>
     <main>
 
       <section id="home" class="screen active wealthScreen">
@@ -56,24 +58,26 @@
           <div class="netWorthChange mutedValue" id="homeNetWorthChange">Performance folgt nach Einrichtung deiner Vermögenskonten.</div>
         </div>
         <div class="allocationStrip" aria-label="Vermögensaufteilung">
-          <div><span>ALPHA</span><b id="homeAlpha">–</b></div><div><span>BETA</span><b>–</b></div><div><span>RESERVE</span><b>–</b></div><div><span>CASH / ASSETS</span><b>–</b></div>
+          <div><span>ALPHA</span><b id="homeAlpha">–</b></div><div><span>BETA</span><b id="homeBeta">–</b></div><div><span>RESERVE</span><b id="homeReserve">–</b></div><div><span>CASH / ASSETS</span><b id="homeCashAssets">–</b></div>
         </div>
         <div class="atlasSignal">
-          <div><div class="label">ATLAS</div><b>Wealth Setup folgt im nächsten Schritt.</b><p>Dein bestehendes Trading läuft unverändert im Alpha-Bereich weiter.</p></div>
-          <button class="secondary compactAction" data-main-target="alpha">Alpha öffnen</button>
+          <div><div class="label">ATLAS</div><b>Financial Setup einrichten.</b><p>Lege Regeln, Konten und dein Vermögensziel zentral fest.</p></div>
+          <button class="secondary compactAction" data-main-target="setup">Setup öffnen</button>
         </div>
       </section>
 
       <section id="wealth" class="screen wealthScreen">
+        <button class="atlasBackButton" data-atlas-back type="button">← Zurück</button>
         <div class="wealthTopline"><div><div class="label">Vermögen</div><h1>Wealth</h1></div></div>
-        <div class="wealthHero compactHero"><div class="label">Gesamtvermögen</div><div class="netWorthValue">Noch nicht eingerichtet</div></div>
+        <div class="wealthHero compactHero"><div class="label">Gesamtvermögen</div><div class="netWorthValue" id="wealthNetWorth">Noch nicht eingerichtet</div></div>
         <div class="wealthList">
-          <div><span>Beta</span><b>–</b></div><div><span>Reserve</span><b>–</b></div><div><span>Alpha</span><b id="wealthAlpha">–</b></div><div><span>Assets</span><b>–</b></div><div><span>Cash</span><b>–</b></div>
+          <div><span>Beta</span><b id="wealthBeta">–</b></div><div><span>Reserve</span><b id="wealthReserve">–</b></div><div><span>Alpha</span><b id="wealthAlpha">–</b></div><div><span>Assets</span><b id="wealthAssets">–</b></div><div><span>Cash</span><b id="wealthCash">–</b></div>
         </div>
         <p class="quietHint">Konten, Regeln und PDF-Import werden anschließend an diese reduzierte Übersicht angebunden.</p>
       </section>
 
       <section id="alpha" class="screen wealthScreen">
+        <button class="atlasBackButton" data-atlas-back type="button">← Zurück</button>
         <div class="wealthTopline"><div><div class="label">Aktiver Vermögensaufbau</div><h1>Alpha</h1></div></div>
         <div class="alphaSummary">
           <div><span>Tradingkapital</span><b id="alphaCapital">–</b></div><div><span>Lifetime Profit</span><b id="alphaLifetime">–</b></div><div><span>Challenge</span><b id="alphaChallenge">–</b></div>
@@ -87,14 +91,67 @@
       </section>
 
       <section id="coach" class="screen wealthScreen">
+        <button class="atlasBackButton" data-atlas-back type="button">← Zurück</button>
         <div class="wealthTopline"><div><div class="label">ATLAS Intelligence</div><h1>Coach</h1></div></div>
         <div class="atlasSignal coachEmpty">
           <div><div class="label">Aktueller Status</div><b>Alles ruhig.</b><p>Sobald Financial Setup und Monthly Review aktiv sind, erscheinen hier nur relevante Erkenntnisse und konkrete nächste Schritte.</p></div>
         </div>
       </section>
 
+
+      <section id="setup" class="screen wealthScreen setupScreen">
+        <button class="atlasBackButton" data-atlas-back type="button">← Zurück</button>
+        <div class="wealthTopline"><div><div class="label">Persönliche Steuerung</div><h1>Financial Setup</h1></div></div>
+
+        <div class="setupCard">
+          <div class="setupCardHead"><div><div class="label">Strategie</div><h2>Deine Regeln</h2></div><span id="strategySavedPill" class="setupStatusPill">Cloud</span></div>
+          <div class="setupGrid">
+            <label><span>Reserve</span><div class="inputUnit"><input id="ruleReserveMonths" type="number" min="1" step="1" inputmode="numeric"><em>Monate</em></div></label>
+            <label><span>Alpha Maximum</span><div class="inputUnit"><input id="ruleAlphaMax" type="number" min="0" step="1000" inputmode="decimal"><em>€</em></div></label>
+            <label><span>Profit-Meilenstein</span><div class="inputUnit"><input id="ruleMilestone" type="number" min="1000" step="1000" inputmode="decimal"><em>€</em></div></label>
+            <label><span>Cash-out</span><div class="inputUnit"><input id="ruleCashout" type="number" min="0" max="100" step="1" inputmode="decimal"><em>%</em></div></label>
+            <label><span>Edelmetalle Ziel</span><div class="inputUnit"><input id="ruleMetalsTarget" type="number" min="0" max="100" step="1" inputmode="decimal"><em>%</em></div></label>
+            <label><span>Toleranz</span><div class="inputUnit"><input id="ruleMetalsTolerance" type="number" min="0" max="20" step="1" inputmode="decimal"><em>± %</em></div></label>
+          </div>
+          <div class="setupChoiceRow">
+            <div><span>Beta</span><b>Hauptvermögensbaustein</b></div>
+            <div><span>Verteilung</span><b>Dynamisch</b></div>
+            <div><span>Beta → Alpha</span><b>Gesperrt</b></div>
+          </div>
+          <button id="btnSaveStrategy" class="primary setupSaveBtn" type="button">Strategie speichern</button>
+          <p id="strategyMsg" class="msg setupMsg"></p>
+        </div>
+
+        <div class="setupCard">
+          <div class="setupCardHead"><div><div class="label">Konten</div><h2>Deine Finanzwelt</h2></div><button id="btnToggleAccountForm" class="secondary setupInlineBtn" type="button">+ Konto hinzufügen</button></div>
+          <div id="accountList" class="setupAccountList"></div>
+          <div id="accountForm" class="setupInlineForm hidden">
+            <div class="setupGrid">
+              <label><span>Kontoname</span><input id="accountName" placeholder="z. B. Girokonto"></label>
+              <label><span>Anbieter</span><input id="accountProvider" placeholder="z. B. Smartbroker+"></label>
+              <label><span>Funktion</span><select id="accountRole"><option value="CASH">CASH</option><option value="RESERVE">RESERVE</option><option value="ALPHA">ALPHA</option><option value="BETA">BETA</option><option value="ASSET">ASSET</option></select></label>
+              <label><span>Erkennung (optional)</span><input id="accountIdentifier" placeholder="IBAN / Depotnr. – letzte Stellen"></label>
+              <label><span>Startwert (optional)</span><div class="inputUnit"><input id="accountOpeningBalance" type="number" step="0.01" inputmode="decimal"><em>€</em></div></label>
+              <label><span>Stand Startwert</span><input id="accountOpeningDate" type="date"></label>
+            </div>
+            <div class="setupFormActions"><button id="btnCancelAccount" class="secondary" type="button">Abbrechen</button><button id="btnAddAccount" class="primary" type="button">Konto speichern</button></div>
+            <p id="setupAccountMsg" class="msg setupMsg"></p>
+          </div>
+        </div>
+
+        <div class="setupCard">
+          <div class="setupCardHead"><div><div class="label">Ziel</div><h2>Challenge</h2></div><span id="goalMilestones" class="setupStatusPill">50 Meilensteine</span></div>
+          <div class="setupGrid twoCols">
+            <label><span>Vermögensziel</span><div class="inputUnit"><input id="goalTarget" type="number" min="0" step="10000" inputmode="decimal"><em>€</em></div></label>
+            <label><span>Meilenstein</span><div class="inputUnit"><input id="goalMilestone" type="number" min="1000" step="1000" inputmode="decimal"><em>€</em></div></label>
+          </div>
+          <button id="btnSaveGoal" class="primary setupSaveBtn" type="button">Ziel speichern</button>
+          <p id="goalMsg" class="msg setupMsg"></p>
+        </div>
+      </section>
+
       <section id="plan" class="screen">
-        <button class="alphaBackHome" data-main-target="home" type="button">← Home</button>
+        <button class="atlasBackButton" data-atlas-back type="button">← Zurück</button>
         <div class="topline">
           <div>
             <div class="label">Atlas Brain</div>
@@ -228,7 +285,7 @@
 
       
 <section id="create" class="screen">
-        <button class="alphaBackHome" data-main-target="home" type="button">← Home</button>
+        <button class="atlasBackButton" data-atlas-back type="button">← Zurück</button>
         <div class="card">
           <div class="label">Trade-Eingabe</div>
           <h1 id="formTitle">Trade anlegen</h1>
@@ -281,7 +338,7 @@
       </section>
 
       <section id="journal" class="screen">
-        <button class="alphaBackHome" data-main-target="home" type="button">← Home</button>
+        <button class="atlasBackButton" data-atlas-back type="button">← Zurück</button>
         <div class="card">
           <div class="label">Trading Journal</div>
           <h1>Beendete Trades</h1>
@@ -291,7 +348,7 @@
       </section>
 
       <section id="challenge" class="screen">
-        <button class="alphaBackHome" data-main-target="home" type="button">← Home</button>
+        <button class="atlasBackButton" data-atlas-back type="button">← Zurück</button>
         <div class="card">
           <div class="label">Großes Ziel</div>
           <h1>1 Mio Challenge</h1>
@@ -324,13 +381,13 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase.js?v=5901-alpha-home-back-1"></script>
-  <script src="app.js?v=5901-alpha-home-back-1"></script>
+  <script src="firebase.js?v=592-financial-setup-1"></script>
+  <script src="app.js?v=592-financial-setup-1"></script>
 
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=5900-wealth-nav-1')
+        navigator.serviceWorker.register('./sw.js?v=592-financial-setup-1')
           .catch(error => console.warn('ATLAS Service Worker konnte nicht registriert werden:', error));
       });
     }
