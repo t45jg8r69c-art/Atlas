@@ -704,32 +704,73 @@ function formatFileSize(bytes){const n=Number(bytes)||0;return n<1024*1024?`${Ma
 function parseStatementMoney(raw){
   if(raw==null)return null;
   let s=String(raw).replace(/\s/g,'').replace(/EUR|€/gi,'');
-  const neg=/^-/.test(s)||/-$/.test(s);
-  s=s.replace(/[+\-]/g,'');
+  const neg=/^-/.test(s)||/-$/.test(s)||/\bS$/i.test(s);
+  s=s.replace(/[+\-]/g,'').replace(/[HS]$/i,'');
   if(s.includes(',')&&s.includes('.'))s=s.replace(/\./g,'').replace(',','.');
   else if(s.includes(','))s=s.replace(',','.');
   else if((s.match(/\./g)||[]).length>1)s=s.replace(/\./g,'');
   const n=Number(s.replace(/[^0-9.]/g,''));
   return Number.isFinite(n)?(neg?-n:n):null;
 }
-function statementValueNear(text,labels){
-  const money='([+\-]?\s*\d{1,3}(?:[.\s]\d{3})*(?:,\d{2})|[+\-]?\s*\d+(?:,\d{2}))\s*(?:EUR|€)?';
-  for(const label of labels){
-    const re=new RegExp(label+'[^\n]{0,90}?'+money,'i');
-    const m=String(text||'').match(re); if(m){const v=parseStatementMoney(m[1]);if(v!=null)return v;}
+function firstMoneyMatch(text,patterns){
+  for(const pattern of patterns){
+    const m=String(text||'').match(pattern);
+    if(m){const v=parseStatementMoney(m[1]);if(v!=null)return v;}
   }
   return null;
 }
-function analyzeStatement(doc){
-  const text=String(doc?.text||'').replace(/\u00a0/g,' ');
-  const opening=statementValueNear(text,['Anfangssaldo','Anfangsbestand','alter Kontostand','Kontostand zu Beginn','Saldo Vortrag','Saldovortrag']);
-  const closing=statementValueNear(text,['Endsaldo','Schlusssaldo','neuer Kontostand','Kontostand am','Kontostand zum','Saldo neu']);
-  const income=statementValueNear(text,['Summe (?:der )?Gutschriften','Gutschriften gesamt','Habenumsatz','Summe Haben','Eingänge gesamt','Zahlungseingänge']);
-  let expenses=statementValueNear(text,['Summe (?:der )?Belastungen','Belastungen gesamt','Sollumsatz','Summe Soll','Ausgänge gesamt','Zahlungsausgänge']);
-  if(expenses!=null)expenses=Math.abs(expenses);
-  const transferHits=(text.match(/\b(?:Umbuchung|Depotübertrag|Eigenübertrag|interner Übertrag|eigene(?:s|n)? Konto|Übertrag auf)\b/gi)||[]).length;
-  const found=[opening,closing,income,expenses].filter(v=>v!=null).length;
-  return{opening,closing,income,expenses,transferHits,confidence:found>=4?'high':found>=2?'medium':'low'};
+function detectStatementType(text,account){
+  const t=String(text||'');
+  if(/Wertaufstellung\s+Edelmetalle|GESAMTLAGERWERT/i.test(t))return'metals';
+  if(/Depotübersicht|Depotwert\s+gesamt|Assetname\s+ISIN/i.test(t))return'depot';
+  if(/Visa|Mastercard|Kreditkarte/i.test(t)&&/Umsatzaufstellung|Zahlungsrahmen/i.test(t))return'creditcard';
+  if(/Kontoauszug|alter\s+Kontostand|neuer\s+Kontostand/i.test(t))return'bank';
+  return String(account?.role||'').toLowerCase();
+}
+function analyzeBankStatement(text){
+  const opening=firstMoneyMatch(text,[/alter\s+Kontostand(?:\s+vom\s+\d{2}\.\d{2}\.\d{4})?\s+([\d.]+,\d{2}\s*[HS]?)/i,/Anfangssaldo[^\d]{0,40}([\d.]+,\d{2}\s*[HS]?)/i]);
+  const closing=firstMoneyMatch(text,[/neuer\s+Kontostand(?:\s+vom\s+\d{2}\.\d{2}\.\d{4})?\s+([\d.]+,\d{2}\s*[HS]?)/i,/Endsaldo[^\d]{0,40}([\d.]+,\d{2}\s*[HS]?)/i]);
+  let income=0,expenses=0,count=0;
+  const re=/(?:^|\s)(\d{2}\.\d{2}\.)\s+\d{2}\.\d{2}\.\s+(.{0,240}?)\s+([\d.]+,\d{2})\s*([HS])(?=\s|$)/g;
+  let m; while((m=re.exec(text))){
+    const desc=m[2]||'',v=parseStatementMoney(m[3]); if(v==null)continue;
+    // Kreditkartenabrechnung ist eine interne Umbuchung; Kartenausgaben werden im Karten-Auszug erfasst.
+    if(/Master\/Visacard|VISA\s+Abrechnung|Kreditkartensaldo/i.test(desc))continue;
+    if(m[4]==='H')income+=Math.abs(v); else expenses+=Math.abs(v); count++;
+  }
+  return{opening,closing,income:count?income:null,expenses:count?expenses:null,transferHits:(text.match(/Master\/Visacard|VISA\s+Abrechnung|Rücklage|Depot|Union Investment/gi)||[]).length,confidence:closing!=null?'high':'medium'};
+}
+function analyzeCreditCard(text){
+  const opening=firstMoneyMatch(text,[/Saldo\s+Vormonat\s+([\d.]+,\d{2})\s*-/i]);
+  let closing=firstMoneyMatch(text,[/(?:^|\s)Saldo\s+([\d.]+,\d{2})\s*-/i,/Zwischensaldo\s+([\d.]+,\d{2})\s*-/i]);
+  if(closing!=null)closing=-Math.abs(closing);
+  let expenses=0,count=0;
+  const re=/\d{2}\.\d{2}\.\s+\d{2}\.\d{2}\.\s+(.{1,160}?)\s+([\d.]+,\d{2})([+\-])/g;
+  let m;while((m=re.exec(text))){
+    if(m[3]==='-'&&!/Saldo\s+Vormonat/i.test(m[1])){expenses+=Math.abs(parseStatementMoney(m[2])||0);count++;}
+  }
+  return{opening:opening==null?null:-Math.abs(opening),closing,income:null,expenses:count?expenses:(closing!=null?Math.abs(closing):null),transferHits:(text.match(/Ausgleich\s+Kreditkartensaldo/gi)||[]).length,confidence:closing!=null?'high':'medium'};
+}
+function analyzeDepot(text){
+  const closing=firstMoneyMatch(text,[/Depotwert\s+gesamt.{0,180}?([\d.]+,\d{2})\s*€/i,/Gesamtdepot\s+in\s+EUR.{0,220}?([\d.]+,\d{2})\s*€/i]);
+  // Smartbroker exportiert die Werte teils nach den Überschriften; als sichere Rückfalllogik den bekannten Gesamtblock nutzen.
+  const fallback=closing!=null?closing:firstMoneyMatch(text,[/\b([\d.]+,\d{2})\s*€\s+[^\n]{0,80}Depotnummer/i]);
+  return{opening:null,closing:fallback,income:null,expenses:null,transferHits:0,confidence:fallback!=null?'high':'low'};
+}
+function analyzeMetals(text){
+  const closing=firstMoneyMatch(text,[/GESAMT\s*LAGERWERT\s+([\d.]+,\d{2})\s*€/i,/Gesamtlagerwert\s+([\d.]+,\d{2})\s*€/i,/Gesamt\s+\d+\s+[\d.,]+\s*g\s+([\d.]+,\d{2})\s*€/i]);
+  return{opening:null,closing,income:null,expenses:null,transferHits:0,confidence:closing!=null?'high':'low'};
+}
+function analyzeStatement(doc,account){
+  const text=String(doc?.text||'').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim();
+  const type=detectStatementType(text,account);
+  let result;
+  if(type==='bank')result=analyzeBankStatement(text);
+  else if(type==='creditcard')result=analyzeCreditCard(text);
+  else if(type==='depot')result=analyzeDepot(text);
+  else if(type==='metals')result=analyzeMetals(text);
+  else result={opening:null,closing:null,income:null,expenses:null,transferHits:0,confidence:'low'};
+  return{...result,type};
 }
 function euroExact(v){return v==null?'–':Number(v).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'}
 function renderFinancialIntelligence(docs={}){
@@ -737,12 +778,12 @@ function renderFinancialIntelligence(docs={}){
   const accounts=reviewActiveAccounts().filter(a=>a.role!=='ALPHA'&&docs[a.id]);
   if(!accounts.length){card.classList.add('hidden');return;}
   card.classList.remove('hidden');
-  const rows=accounts.map(a=>({account:a,analysis:analyzeStatement(docs[a.id])}));
+  const rows=accounts.map(a=>({account:a,analysis:analyzeStatement(docs[a.id],a)}));
   const knownIncome=rows.filter(r=>r.analysis.income!=null); const knownExpenses=rows.filter(r=>r.analysis.expenses!=null);
   const income=knownIncome.reduce((s,r)=>s+r.analysis.income,0), expenses=knownExpenses.reduce((s,r)=>s+r.analysis.expenses,0);
   const cashflow=(knownIncome.length&&knownExpenses.length)?income-expenses:null;
   const transfers=rows.reduce((s,r)=>s+r.analysis.transferHits,0);
-  grid.innerHTML=`<div><span>Einnahmen</span><b>${knownIncome.length?euroExact(income):'Noch nicht erkannt'}</b></div><div><span>Ausgaben</span><b>${knownExpenses.length?euroExact(expenses):'Noch nicht erkannt'}</b></div><div><span>Überschuss</span><b>${cashflow!=null?euroExact(cashflow):'Noch offen'}</b></div><div><span>Transfer-Hinweise</span><b>${transfers||'Keine erkannt'}</b></div>`+rows.map(r=>`<div class="analysisAccount"><span>${escapeHtml(r.account.name)}</span><b>${r.analysis.closing!=null?euroExact(r.analysis.closing):'Saldo nicht sicher erkannt'}</b><small>${r.analysis.opening!=null?'Start '+euroExact(r.analysis.opening)+' · ':''}${r.analysis.confidence==='high'?'hohe':r.analysis.confidence==='medium'?'mittlere':'geringe'} Erkennung</small></div>`).join('');
+  grid.innerHTML=`<div><span>Einnahmen</span><b>${knownIncome.length?euroExact(income):'Noch nicht erkannt'}</b></div><div><span>Ausgaben</span><b>${knownExpenses.length?euroExact(expenses):'Noch nicht erkannt'}</b></div><div><span>Überschuss</span><b>${cashflow!=null?euroExact(cashflow):'Noch offen'}</b></div><div><span>Transfer-Hinweise</span><b>${transfers||'Keine erkannt'}</b></div>`+rows.map(r=>`<div class="analysisAccount"><span>${escapeHtml(r.account.name)}</span><b>${r.analysis.closing!=null?euroExact(r.analysis.closing):'Wert nicht sicher erkannt'}</b><small>${r.analysis.opening!=null?'Start '+euroExact(r.analysis.opening)+' · ':''}${r.analysis.confidence==='high'?'hohe':r.analysis.confidence==='medium'?'mittlere':'geringe'} Erkennung</small></div>`).join('');
   const lows=rows.filter(r=>r.analysis.confidence==='low').length;
   if(pill)pill.textContent=lows?'Prüfung nötig':'Automatisch erkannt';
   if(hint)hint.textContent=lows?'ATLAS zeigt nur Werte, die im Auszug eindeutig gefunden wurden. Nicht sicher erkannte Werte werden bewusst nicht geschätzt.':'Die wichtigsten Monatswerte wurden aus den Auszügen erkannt. Interne Transfers werden im nächsten Schritt kontenübergreifend abgeglichen.';
