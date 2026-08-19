@@ -12,7 +12,7 @@
   <meta name="format-detection" content="telephone=no" />
   <link rel="manifest" href="manifest.webmanifest?v=5810-market-identity-1" />
   <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=5810-market-identity-1" />
-  <link rel="stylesheet" href="style.css?v=5.9.6" />
+  <link rel="stylesheet" href="style.css?v=5.9.6.1" />
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
@@ -181,6 +181,7 @@
               <label><span>Anbieter</span><input id="accountProvider" placeholder="z. B. Smartbroker+"></label>
               <label><span>Funktion</span><select id="accountRole"><option value="CASH">CASH</option><option value="RESERVE">RESERVE</option><option value="ALPHA">ALPHA</option><option value="BETA">BETA</option><option value="ASSET">ASSET</option></select></label>
               <label><span>Aktualisierung</span><select id="accountFrequency"><option value="monthly">Monatlich</option><option value="annual">Jährlich</option><option value="manual">Manuell</option></select></label>
+              <label><span>Auszüge pro Monat</span><div class="inputUnit"><input id="accountExpectedStatements" type="number" min="1" max="10" step="1" value="1" inputmode="numeric"><em>PDF</em></div></label>
               <label><span>Erkennung (optional)</span><input id="accountIdentifier" placeholder="IBAN / Depotnr. – letzte Stellen"></label>
               <label><span>Startwert (optional)</span><div class="inputUnit"><input id="accountOpeningBalance" type="number" step="0.01" inputmode="decimal"><em>€</em></div></label>
               <label><span>Stand Startwert</span><input id="accountOpeningDate" type="date"></label>
@@ -433,8 +434,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="firebase.js?v=5.9.6"></script>
-  <script src="app.js?v=5.9.6"></script>
+  <script src="firebase.js?v=5.9.6.1"></script>
+  <script src="app.js?v=5.9.6.1"></script>
 
   <script>
     if ('serviceWorker' in navigator) {
