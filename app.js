@@ -54,7 +54,7 @@ const defaultWealthSetup={
     changedAt:null
   },
   accounts:[],
-  tracking:{startDate:null,createdAt:null},
+  tracking:{startDate:null,createdAt:null,productiveStart:false,baseline:null,cutoverAt:null},
   tax:{
     enabled:true,
     residency:'DE',
@@ -516,8 +516,52 @@ function accountEffectiveMeta(account){
   return{value:Number(account.openingBalance)||0,date:openingDate,source:'Startwert'};
 }
 
+
+function tradeDateISO(t){
+  const iso=String(t?.createdAt||'');
+  if(/^\d{4}-\d{2}-\d{2}/.test(iso))return iso.slice(0,10);
+  const d=String(t?.date||'').trim();
+  let m=d.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  if(m)return`${m[3]}-${m[2]}-${m[1]}`;
+  m=d.match(/(\d{4})-(\d{2})-(\d{2})/);
+  return m?`${m[1]}-${m[2]}-${m[3]}`:'';
+}
+function alphaBalanceAtDate(date){
+  const cutoff=String(date||'');
+  const pnl=(state.trades||[]).reduce((sum,t)=>{
+    const td=tradeDateISO(t);
+    if(!td||!cutoff||td>cutoff)return sum;
+    return sum+Number(tradePnlEuro(t)||0);
+  },0);
+  return accountStart()+pnl;
+}
+function productiveBaseline(){
+  return wealthSetup().tracking?.baseline||null;
+}
+function baselineWealthForClosure(){
+  const b=productiveBaseline();
+  if(!b)return null;
+  return{
+    alpha:Number(b.alpha)||0,beta:Number(b.beta)||0,reserve:Number(b.reserve)||0,
+    cash:Number(b.cash)||0,assets:Number(b.assets)||0,tax:Number(b.tax)||0,total:Number(b.total)||0
+  };
+}
+function monthLastDate(month){
+  const [y,m]=String(month||'').split('-').map(Number);
+  if(!y||!m)return null;
+  return new Date(y,m,0);
+}
+function monthCanClose(month){
+  const last=monthLastDate(month);if(!last)return false;
+  const today=new Date();today.setHours(23,59,59,999);
+  last.setHours(0,0,0,0);
+  return today>=last;
+}
+
 function wealthTrackingStartDate(){
   const ws=wealthSetup();
+  const b=ws.tracking?.baseline;
+  if(b?.date)return String(b.date);
   const explicit=String(ws.tracking?.startDate||'');
   if(explicit)return explicit;
   const dates=(ws.accounts||[]).filter(a=>a.status!=='archived'&&a.role!=='ALPHA'&&a.openingDate).map(a=>String(a.openingDate)).sort();
@@ -531,6 +575,8 @@ function accountValueAtTrackingStart(account,startDate){
   return 0;
 }
 function wealthBaselineSnapshot(){
+  const b=productiveBaseline();
+  if(b)return{date:b.date,value:Number(b.total)||0,alpha:Number(b.alpha)||0,nonAlpha:(Number(b.total)||0)-(Number(b.alpha)||0),wealth:baselineWealthForClosure()};
   const accounts=(state.wealthSetup?.accounts||[]).filter(a=>a.status!=='archived');
   const startDate=wealthTrackingStartDate();
   const alpha=accountBalance();
@@ -548,21 +594,21 @@ function wealthCurrentSnapshot(){
 function officialWealthSnapshot(){
   const c=latestClosedStatement;
   if(c?.status==='closed'&&c.wealth)return{
-    official:true,
-    month:c.month||'',
-    total:Number(c.wealth.total)||0,
-    alpha:Number(c.wealth.alpha)||0,
-    beta:Number(c.wealth.beta)||0,
-    reserve:Number(c.wealth.reserve)||0,
-    cash:Number(c.wealth.cash)||0,
-    assets:Number(c.wealth.assets)||0,
-    tax:Number(c.wealth.tax)||0
+    official:true,kind:'statement',month:c.month||'',date:closedMonthEndLabel(c.month),
+    total:Number(c.wealth.total)||0,alpha:Number(c.wealth.alpha)||0,beta:Number(c.wealth.beta)||0,
+    reserve:Number(c.wealth.reserve)||0,cash:Number(c.wealth.cash)||0,assets:Number(c.wealth.assets)||0,tax:Number(c.wealth.tax)||0
+  };
+  const b=productiveBaseline();
+  if(b)return{
+    official:true,kind:'baseline',month:'',date:b.date||'',
+    total:Number(b.total)||0,alpha:Number(b.alpha)||0,beta:Number(b.beta)||0,
+    reserve:Number(b.reserve)||0,cash:Number(b.cash)||0,assets:Number(b.assets)||0,tax:Number(b.tax)||0
   };
   const cur=wealthCurrentSnapshot();
   const accounts=(state.wealthSetup?.accounts||[]).filter(a=>a.status!=='archived');
   const roleTotal=role=>accounts.filter(a=>a.role===role).reduce((sum,a)=>sum+accountEffectiveValue(a),0);
   const beta=roleTotal('BETA'),reserve=roleTotal('RESERVE'),cash=roleTotal('CASH'),assets=roleTotal('ASSET'),tax=roleTotal('TAX');
-  return{official:false,month:'',total:cur.alpha+beta+reserve+cash+assets+tax,alpha:cur.alpha,beta,reserve,cash,assets,tax};
+  return{official:false,kind:'preview',month:'',date:'',total:cur.alpha+beta+reserve+cash+assets+tax,alpha:cur.alpha,beta,reserve,cash,assets,tax};
 }
 function closedMonthEndLabel(month){
   if(!month)return'';
@@ -641,7 +687,9 @@ function refreshWealthShell(){
   if(hasWealthSetup){
     if($('homeNetWorth'))$('homeNetWorth').textContent=euroShort(official.total);
     if($('wealthNetWorth'))$('wealthNetWorth').textContent=euroShort(official.total);
-    const officialLabel=official.official?`Stand ${closedMonthEndLabel(official.month)} · ATLAS Statement ✓`:'Vorläufig · noch kein Monatsabschluss';
+    const officialLabel=official.official
+      ?official.kind==='baseline'?`Stand ${official.date} · ATLAS Start ✓`:`Stand ${closedMonthEndLabel(official.month)} · ATLAS Statement ✓`
+      :'Vorläufig · noch kein Monatsabschluss';
     if($('homeWealthAsOf'))$('homeWealthAsOf').textContent=officialLabel;
     if($('wealthAsOf'))$('wealthAsOf').textContent=officialLabel;
 
@@ -654,11 +702,17 @@ function refreshWealthShell(){
     }
 
     const roleMeta={BETA:wealthSourceMetaForRole('BETA'),RESERVE:wealthSourceMetaForRole('RESERVE'),ALPHA:wealthSourceMetaForRole('ALPHA'),ASSET:wealthSourceMetaForRole('ASSET'),CASH:wealthSourceMetaForRole('CASH'),TAX:wealthSourceMetaForRole('TAX')};
-    const setMeta=(id,meta,officialMonth)=>{if(!$(id))return;$(id).textContent=official.official?`Monatsabschluss ${monthLabelDE(officialMonth)}`:(meta?.date?`Datenstand ${meta.date} · ${meta.source}`:'Kein Datenstand')};
+    const setMeta=(id,meta,officialMonth)=>{if(!$(id))return;$(id).textContent=official.official
+      ?official.kind==='baseline'?`Startwert ${official.date}`:`Monatsabschluss ${monthLabelDE(officialMonth)}`
+      :(meta?.date?`Datenstand ${meta.date} · ${meta.source}`:'Kein Datenstand')};
     setMeta('wealthBetaMeta',roleMeta.BETA,official.month);setMeta('wealthReserveMeta',roleMeta.RESERVE,official.month);setMeta('wealthAlphaMeta',roleMeta.ALPHA,official.month);setMeta('wealthAssetsMeta',roleMeta.ASSET,official.month);setMeta('wealthCashMeta',roleMeta.CASH,official.month);setMeta('wealthTaxMeta',roleMeta.TAX,official.month);
 
-    if($('homeSignalTitle'))$('homeSignalTitle').textContent=official.official?`Letzter Abschluss: ${monthLabelDE(official.month)} ✓`:'Monatsreview bereit.';
-    if($('homeSignalText'))$('homeSignalText').textContent=official.official?'Neue Daten werden erst mit dem nächsten Monatsabschluss zum offiziellen Vermögensstand.':'Schließe deinen ersten Monat ab, damit HOME und WEALTH einen offiziellen Stichtagswert verwenden.';
+    if($('homeSignalTitle'))$('homeSignalTitle').textContent=official.official
+      ?official.kind==='baseline'?`ATLAS Start: ${official.date} ✓`:`Letzter Abschluss: ${monthLabelDE(official.month)} ✓`
+      :'Monatsreview bereit.';
+    if($('homeSignalText'))$('homeSignalText').textContent=official.official
+      ?official.kind==='baseline'?'Juli 2026 ist der erste produktive Review. Bis zum Abschluss bleibt der Startwert offiziell.':'Neue Daten werden erst mit dem nächsten Monatsabschluss zum offiziellen Vermögensstand.'
+      :'Schließe deinen ersten Monat ab, damit HOME und WEALTH einen offiziellen Stichtagswert verwenden.';
     if($('homeSignalAction')){$('homeSignalAction').textContent='Coach öffnen';$('homeSignalAction').dataset.mainTarget='coach';}
   }else{
     const alpha=accountBalance();
@@ -760,10 +814,78 @@ function renderFinancialSetup(){
   $('goalTarget').value=g.target??1000000;
   $('goalMilestone').value=g.milestone??20000;
   renderAccountList();
+  renderProductiveStart();
   const tracking=ws.tracking||{};
   if($('wealthTrackingStart'))$('wealthTrackingStart').value=tracking.startDate||wealthTrackingStartDate()||new Date().toISOString().slice(0,10);
   renderWealthBaselineSummary();
   updateGoalMilestones();
+}
+
+
+function renderProductiveStart(){
+  const ws=wealthSetup(), tracking=ws.tracking||{}, b=tracking.baseline;
+  if(!$('productiveStartCard'))return;
+  if($('productiveStartDate'))$('productiveStartDate').value=b?.date||'2026-06-30';
+  const date=$('productiveStartDate')?.value||b?.date||'2026-06-30';
+  if($('productiveAlpha'))$('productiveAlpha').textContent=euroExact(b?.alpha ?? alphaBalanceAtDate(date));
+  ['beta','reserve','cash','assets','tax'].forEach(k=>{
+    const el=$('productive'+k.charAt(0).toUpperCase()+k.slice(1));
+    if(el)el.value=b?.[k]??0;
+  });
+  updateProductiveStartTotal();
+  if($('productiveStartStatus'))$('productiveStartStatus').textContent=tracking.productiveStart?'Produktiv ✓':'Noch Testdaten';
+  if($('productiveStartDone'))$('productiveStartDone').classList.toggle('hidden',!tracking.productiveStart);
+}
+function updateProductiveStartTotal(){
+  const date=$('productiveStartDate')?.value||'2026-06-30';
+  const alpha=alphaBalanceAtDate(date);
+  if($('productiveAlpha'))$('productiveAlpha').textContent=euroExact(alpha);
+  const value=id=>Number($(id)?.value)||0;
+  const total=alpha+value('productiveBeta')+value('productiveReserve')+value('productiveCash')+value('productiveAssets')+value('productiveTax');
+  if($('productiveTotal'))$('productiveTotal').textContent=euroExact(total);
+  return{date,alpha,beta:value('productiveBeta'),reserve:value('productiveReserve'),cash:value('productiveCash'),assets:value('productiveAssets'),tax:value('productiveTax'),total};
+}
+async function createWealthBackupAndClearTests(){
+  if(!user)return null;
+  const stamp=new Date().toISOString().replace(/[:.]/g,'-');
+  const snap=await atlasFirebase.db.collection('users').doc(user.uid).collection('atlas').where('month','>=','0000-00').get();
+  const backupRoot=atlasFirebase.db.collection('users').doc(user.uid).collection('atlas_wealth_backups').doc(stamp);
+  await backupRoot.set({createdAt:new Date().toISOString(),reason:'Wealth Navigator Produktivstart',preservedAlpha:true,monthCount:snap.size});
+  const jobs=[];
+  snap.forEach(d=>{
+    const data=d.data();
+    if(!data?.month)return;
+    jobs.push(backupRoot.collection('months').doc(d.id).set(data));
+  });
+  await Promise.all(jobs);
+  const deletes=[];
+  snap.forEach(d=>{const data=d.data();if(data?.month)deletes.push(d.ref.delete())});
+  await Promise.all(deletes);
+  return stamp;
+}
+async function executeProductiveCutover(){
+  if(!user)return;
+  if(!$('productiveConfirm')?.checked){
+    if($('productiveStartMsg'))$('productiveStartMsg').textContent='Bitte bestätige zuerst, dass ausschließlich Wealth-/Coach-Testdaten bereinigt werden sollen.';
+    return;
+  }
+  const baseline=updateProductiveStartTotal();
+  if(!baseline.date){if($('productiveStartMsg'))$('productiveStartMsg').textContent='Bitte einen Startstichtag angeben.';return;}
+  if($('productiveStartMsg'))$('productiveStartMsg').textContent='Sicherung wird erstellt und Wealth-Testdaten werden bereinigt…';
+  try{
+    const backupId=await createWealthBackupAndClearTests();
+    const ws=wealthSetup();
+    ws.tracking={...(ws.tracking||{}),startDate:baseline.date,productiveStart:true,baseline:{...baseline,createdAt:new Date().toISOString(),source:'ATLAS Produktivstart'},cutoverAt:new Date().toISOString(),backupId};
+    state.wealthSetup=ws;
+    latestWealthValues={};latestClosedStatement=null;monthlyReviewCache={month:null,statements:{},decisions:{},closure:null,loading:false};
+    await saveCloud();
+    renderFinancialSetup();refreshWealthShell();renderStatementHistory();
+    if($('reviewMonth'))$('reviewMonth').value='2026-07';
+    if($('productiveStartMsg'))$('productiveStartMsg').textContent='Produktivstart abgeschlossen. Alpha/Trading wurde nicht verändert. Juli 2026 kann jetzt als erster echter Monatsreview abgeschlossen werden.';
+  }catch(e){
+    console.error('Productive cutover failed',e);
+    if($('productiveStartMsg'))$('productiveStartMsg').textContent='Produktivstart fehlgeschlagen. Es wurden keine Alpha-/Tradingdaten verändert. Bitte erneut versuchen.';
+  }
 }
 
 function renderWealthBaselineSummary(){
@@ -1318,14 +1440,19 @@ function reviewReadyToClose(docs={}){
 async function closeMonthlyReview(){
   if(!user)return;
   const month=$('reviewMonth')?.value||currentMonthKey(), docs=monthlyReviewCache.statements||{};
+  if(!monthCanClose(month)){
+    if($('reviewCloseMsg'))$('reviewCloseMsg').textContent=`${monthLabelDE(month)} kann erst am ${closedMonthEndLabel(month)} offiziell abgeschlossen werden. Bis dahin bleiben die Daten vorläufig.`;
+    return;
+  }
   const check=reviewReadyToClose(docs);
   if(!check.ready){if($('reviewCloseMsg'))$('reviewCloseMsg').textContent=check.unresolved?`Noch ${check.unresolved} Prüfung(en) offen.`:check.low?'Mindestens ein Dokument wurde noch nicht sicher erkannt.':'Noch nicht alle monatlichen Datenquellen sind aktuell.';return;}
   const cf=cashflowTotals(check.rows), cats=categoryTotals(check.rows), previous=await previousClosedStatement(month), wealth=currentMonthWealthSnapshot(check.rows);
+  const previousWealth=previous?.wealth||baselineWealthForClosure();
   const tax=taxProjectionForMonth(month,check.rows);
   const freeBeforeTax=cf.income-cf.expenses;
   const freeAfterTax=freeBeforeTax-tax.required;
   const cashflow={income:cf.income,expenses:cf.expenses,free:freeBeforeTax,freeAfterTax,transfers:cf.transfers,necessary:cats.necessary,categories:cats.totals};
-  const closure={status:'closed',month,closedAt:new Date().toISOString(),wealth,cashflow,tax,previousMonth:previous?.month||null,previousWealth:previous?.wealth||null,reviewVersion:'5963-tax-reserve-v1'};
+  const closure={status:'closed',month,closedAt:new Date().toISOString(),wealth,cashflow,tax,previousMonth:previous?.month||null,previousBaselineDate:previous?null:(productiveBaseline()?.date||null),previousWealth:previousWealth||null,reviewVersion:'5964-productive-cutover-v1'};
   await reviewDocRef(month).set({month,statements:docs,decisions:monthlyReviewCache.decisions||{},closure,updatedAt:new Date().toISOString()},{merge:true});
   monthlyReviewCache.closure=closure;
   await loadLatestClosedStatement();
@@ -1346,9 +1473,13 @@ function renderAtlasStatement(month,docs={}){
   const change=Number(w.total||0)-Number(prev.total||0), pct=Number(prev.total)?change/Number(prev.total)*100:null;
   $('atlasStatementTitle').textContent=monthLabelDE(month);
   $('atlasStatementNet').textContent=euroExact(w.total||0);
-  $('atlasStatementChange').textContent=closure.previousMonth?(pct==null?`${change>=0?'+':''}${euroExact(change)}`:`${change>=0?'+':''}${euroExact(change)} · ${pct>=0?'+':''}${pct.toLocaleString('de-DE',{minimumFractionDigits:1,maximumFractionDigits:1})} %`):'Erster abgeschlossener Monat';
+  $('atlasStatementChange').textContent=closure.previousMonth
+    ?(pct==null?`${change>=0?'+':''}${euroExact(change)}`:`${change>=0?'+':''}${euroExact(change)} · ${pct>=0?'+':''}${pct.toLocaleString('de-DE',{minimumFractionDigits:1,maximumFractionDigits:1})} %`)
+    :closure.previousBaselineDate
+      ?`${change>=0?'+':''}${euroExact(change)} seit ATLAS Start ${closure.previousBaselineDate}${pct==null?'':` · ${pct>=0?'+':''}${pct.toLocaleString('de-DE',{minimumFractionDigits:1,maximumFractionDigits:1})} %`}`
+      :'Erster abgeschlossener Monat';
   const roles=[['Alpha','alpha'],['Beta','beta'],['Reserve','reserve'],['Cash','cash'],['Assets','assets'],['Steuertopf','tax']];
-  $('atlasStatementWealth').innerHTML=roles.map(([label,key])=>`<div><span>${label}</span><b>${euroExact(w[key]||0)}</b><small>${closure.previousMonth?`${snapshotChange(w,{wealth:prev},key)>=0?'+':''}${euroExact(snapshotChange(w,{wealth:prev},key))}`:'Baseline'}</small></div>`).join('');
+  $('atlasStatementWealth').innerHTML=roles.map(([label,key])=>`<div><span>${label}</span><b>${euroExact(w[key]||0)}</b><small>${closure.previousWealth?`${snapshotChange(w,{wealth:prev},key)>=0?'+':''}${euroExact(snapshotChange(w,{wealth:prev},key))}`:'Baseline'}</small></div>`).join('');
   const tax=closure.tax||{};$('atlasStatementCashflow').innerHTML=`<div><span>Einnahmen</span><b>${euroExact(cf.income||0)}</b></div><div><span>Ausgaben</span><b>${euroExact(cf.expenses||0)}</b></div><div><span>Steuerreserve</span><b>${euroExact(tax.required||0)}</b></div><div><span>Nach Steuerreserve verfügbar</span><b>${euroExact(cf.freeAfterTax??cf.free??0)}</b></div>`;
 }
 async function renderStatementHistory(){
@@ -1371,10 +1502,10 @@ function renderReviewClose(month,docs={}){
     $('reviewCloseText').textContent='Dieser Monatsstand ist eingefroren und bildet deine Vermögenshistorie.';
     $('btnCloseReview').classList.add('hidden');$('btnReopenReview').classList.remove('hidden');
   }else{
-    const check=reviewReadyToClose(docs);
-    $('reviewCloseTitle').textContent=check.ready?'Bereit zum Abschluss':'Review noch offen';
-    $('reviewCloseText').textContent=check.ready?'Alle Pflichtdaten sind vorhanden und geprüft. Jetzt ATLAS Statement erzeugen.':check.unresolved?`${check.unresolved} Buchung(en) benötigen noch deine Entscheidung.`:check.low?'Mindestens ein Dokument benötigt noch Prüfung.':'Noch nicht alle monatlichen Datenquellen sind vollständig.';
-    $('btnCloseReview').classList.toggle('hidden',!check.ready);$('btnReopenReview').classList.add('hidden');
+    const check=reviewReadyToClose(docs), canClose=monthCanClose(month);
+    $('reviewCloseTitle').textContent=!canClose?'Monat läuft noch':check.ready?'Bereit zum Abschluss':'Review noch offen';
+    $('reviewCloseText').textContent=!canClose?`Offizieller Abschluss erst am ${closedMonthEndLabel(month)}. Uploads und Analyse bleiben bis dahin vorläufig.`:check.ready?'Alle Pflichtdaten sind vorhanden und geprüft. Jetzt ATLAS Statement erzeugen.':check.unresolved?`${check.unresolved} Buchung(en) benötigen noch deine Entscheidung.`:check.low?'Mindestens ein Dokument benötigt noch Prüfung.':'Noch nicht alle monatlichen Datenquellen sind vollständig.';
+    $('btnCloseReview').classList.toggle('hidden',!check.ready||!canClose);$('btnReopenReview').classList.add('hidden');
   }
   renderAtlasStatement(month,docs);
 }
@@ -2074,7 +2205,9 @@ function milestoneDates(done){const trades=[...(state.trades||[])].reverse();let
 function renderChallenge(){const snap=challengeSnapshot();if($('accountStart'))$('accountStart').value=state.settings.accountStart||'';$('accountBalance').textContent=euroShort(snap.balance);$('journalProfit').textContent=euroShort(snap.pnl);$('wealthNow').textContent=snap.done+' / '+CHALLENGE_BOXES;$('wealthPct').textContent=snap.pct+'%';$('wealthOpen').textContent=euroShort(snap.open);$('nextMilestone').textContent=snap.done>=CHALLENGE_BOXES?'Ziel erreicht':euroShort(snap.next);const bar=$('wealthBar');if(bar)bar.style.width=snap.pct+'%';const dates=milestoneDates(snap.done);$('boxes').innerHTML=Array.from({length:CHALLENGE_BOXES},(_,i)=>{const n=i+1, amount=n*CHALLENGE_BOX_VALUE, done=n<=snap.done;return `<div class="box ${done?'done':''}"><b>${n}</b><span>${euroShort(amount)}</span><small>${done?(dates[n]||'erreicht'):''}</small></div>`}).join('')}
 function marketSelect(){const val=$('fMarketSelect').value;const m=markets.find(x=>x[0]===val);if(!m)return;if(val!=='CUSTOM'){$('fSymbol').value=m[0];$('fMarket').value=m[2]}}
 function clock(){$('clockPill').textContent=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}
-function boot(){makeNav();if($('btnSaveTax'))$('btnSaveTax').onclick=saveTaxSettings;if($('btnMonthlyReminderLater'))$('btnMonthlyReminderLater').onclick=dismissMonthlyReminder;if($('btnMonthlyReminderOpen'))$('btnMonthlyReminderOpen').onclick=openPreviousMonthReview;if($('btnCloseReview'))$('btnCloseReview').onclick=closeMonthlyReview;if($('btnReopenReview'))$('btnReopenReview').onclick=reopenMonthlyReview;if($('btnSaveWealthTracking'))$('btnSaveWealthTracking').onclick=saveWealthTracking;if($('btnSaveStrategy'))$('btnSaveStrategy').onclick=saveStrategy;if($('btnToggleAccountForm'))$('btnToggleAccountForm').onclick=()=>toggleAccountForm(true);if($('btnCancelAccount'))$('btnCancelAccount').onclick=()=>toggleAccountForm(false);if($('btnAddAccount'))$('btnAddAccount').onclick=addAccount;if($('btnSaveGoal'))$('btnSaveGoal').onclick=saveGoal;if($('goalTarget'))$('goalTarget').addEventListener('input',updateGoalMilestones);if($('goalMilestone'))$('goalMilestone').addEventListener('input',updateGoalMilestones);$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnNewTrade').onclick=startNewTrade;$('btnBackDesk').onclick=()=>{selectedTradeId=null;renderPlan();scrollTo(0,0)};$('btnEditTrade').onclick=editSelectedTrade;if($('btnDeleteActiveTrade'))$('btnDeleteActiveTrade').onclick=deleteActiveTrade;if($('closeMode'))$('closeMode').onchange=()=>renderPlan();if($('closePrice'))$('closePrice').oninput=()=>renderPlan();$('btnExportJournal').onclick=exportJournal;if($('btnSaveAccount'))$('btnSaveAccount').onclick=saveAccountBase;$('fMarketSelect').onchange=()=>{marketSelect();markFormDirty();renderDeviationPanel()};
+function boot(){makeNav();
+  if($('btnProductiveCutover'))$('btnProductiveCutover').onclick=executeProductiveCutover;
+  ['productiveStartDate','productiveBeta','productiveReserve','productiveCash','productiveAssets','productiveTax'].forEach(id=>{if($(id))$(id).addEventListener('input',updateProductiveStartTotal)});if($('btnSaveTax'))$('btnSaveTax').onclick=saveTaxSettings;if($('btnMonthlyReminderLater'))$('btnMonthlyReminderLater').onclick=dismissMonthlyReminder;if($('btnMonthlyReminderOpen'))$('btnMonthlyReminderOpen').onclick=openPreviousMonthReview;if($('btnCloseReview'))$('btnCloseReview').onclick=closeMonthlyReview;if($('btnReopenReview'))$('btnReopenReview').onclick=reopenMonthlyReview;if($('btnSaveWealthTracking'))$('btnSaveWealthTracking').onclick=saveWealthTracking;if($('btnSaveStrategy'))$('btnSaveStrategy').onclick=saveStrategy;if($('btnToggleAccountForm'))$('btnToggleAccountForm').onclick=()=>toggleAccountForm(true);if($('btnCancelAccount'))$('btnCancelAccount').onclick=()=>toggleAccountForm(false);if($('btnAddAccount'))$('btnAddAccount').onclick=addAccount;if($('btnSaveGoal'))$('btnSaveGoal').onclick=saveGoal;if($('goalTarget'))$('goalTarget').addEventListener('input',updateGoalMilestones);if($('goalMilestone'))$('goalMilestone').addEventListener('input',updateGoalMilestones);$('btnLogin').onclick=login;$('btnRegister').onclick=register;$('btnLogout').onclick=()=>atlasFirebase.auth.signOut();$('btnSavePlan').onclick=savePlan;$('btnYahoo').onclick=fetchYahoo;$('btnCloseTrade').onclick=closeTrade;$('btnNewTrade').onclick=startNewTrade;$('btnBackDesk').onclick=()=>{selectedTradeId=null;renderPlan();scrollTo(0,0)};$('btnEditTrade').onclick=editSelectedTrade;if($('btnDeleteActiveTrade'))$('btnDeleteActiveTrade').onclick=deleteActiveTrade;if($('closeMode'))$('closeMode').onchange=()=>renderPlan();if($('closePrice'))$('closePrice').oninput=()=>renderPlan();$('btnExportJournal').onclick=exportJournal;if($('btnSaveAccount'))$('btnSaveAccount').onclick=saveAccountBase;$('fMarketSelect').onchange=()=>{marketSelect();markFormDirty();renderDeviationPanel()};
   ['fBrokerAccount','fMarket','fSymbol','fDirection','fPositionStatus','fContracts','fPointValue','fEntry','fStop','fTarget','fZone','fWhy','fRule'].forEach(id=>{
     const el=$(id);if(!el)return;
     el.addEventListener('input',()=>{markFormDirty();renderDeviationPanel()});

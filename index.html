@@ -12,7 +12,7 @@
   <meta name="format-detection" content="telephone=no" />
   <link rel="manifest" href="manifest.webmanifest?v=5810-market-identity-1" />
   <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=5810-market-identity-1" />
-  <link rel="stylesheet" href="style.css?v=5.9.6.3" />
+  <link rel="stylesheet" href="style.css?v=5.9.6.4" />
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
@@ -150,8 +150,28 @@
         <div class="wealthTopline"><div><div class="label">Persönliche Steuerung</div><h1>Financial Setup</h1></div></div>
 
 
-        <div class="setupCard">
-          <div class="setupCardHead"><div><div class="label">Vermögenstracking</div><h2>Dein Startpunkt</h2></div><span class="setupStatusPill">Baseline</span></div>
+
+        <div id="productiveStartCard" class="setupCard productiveStartCard">
+          <div class="setupCardHead"><div><div class="label">Produktivstart</div><h2>Wealth Cut-over</h2></div><span id="productiveStartStatus" class="setupStatusPill">Noch Testdaten</span></div>
+          <p class="setupHint"><b>Alpha/Trading bleibt vollständig erhalten.</b> Bereinigt werden ausschließlich die bisher erzeugten Wealth-/Coach-Testdaten. Vorher erstellt ATLAS automatisch eine Sicherung.</p>
+          <div class="setupGrid">
+            <label><span>Startstichtag</span><input id="productiveStartDate" type="date" value="2026-06-30"></label>
+            <label><span>Alpha</span><div class="productiveReadOnly"><b id="productiveAlpha">–</b><small>automatisch aus echter Trading-Historie</small></div></label>
+            <label><span>Beta</span><div class="inputUnit"><input id="productiveBeta" type="number" step="0.01" value="0" inputmode="decimal"><em>€</em></div></label>
+            <label><span>Reserve</span><div class="inputUnit"><input id="productiveReserve" type="number" step="0.01" value="0" inputmode="decimal"><em>€</em></div></label>
+            <label><span>Cash</span><div class="inputUnit"><input id="productiveCash" type="number" step="0.01" value="0" inputmode="decimal"><em>€</em></div></label>
+            <label><span>Assets / Edelmetalle</span><div class="inputUnit"><input id="productiveAssets" type="number" step="0.01" value="0" inputmode="decimal"><em>€</em></div></label>
+            <label><span>Steuertopf</span><div class="inputUnit"><input id="productiveTax" type="number" step="0.01" value="0" inputmode="decimal"><em>€</em></div></label>
+          </div>
+          <div class="productiveTotal"><span>Gesamtvermögen zum Start</span><b id="productiveTotal">–</b></div>
+          <label class="productiveConfirm"><input id="productiveConfirm" type="checkbox"><span>Ich bestätige: Nur Wealth-/Coach-Testdaten dürfen bereinigt werden. Trading, Journal, Challenge und Alpha-Historie müssen unverändert bleiben.</span></label>
+          <button id="btnProductiveCutover" class="primary setupSaveBtn" type="button">Produktivstart durchführen</button>
+          <p id="productiveStartMsg" class="msg setupMsg"></p>
+          <div id="productiveStartDone" class="productiveDone hidden">✓ Produktivstart gespeichert. Die Baseline bleibt als historischer Startpunkt erhalten.</div>
+        </div>
+
+        <div class="setupCard legacyTrackingCard">
+          <div class="setupCardHead"><div><div class="label">Vermögenstracking</div><h2>Technischer Startpunkt</h2></div><span class="setupStatusPill">Baseline</span></div>
           <div class="setupGrid twoCols">
             <label><span>Startstichtag</span><input id="wealthTrackingStart" type="date"></label>
           </div>
@@ -461,8 +481,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="firebase.js?v=5.9.6.3"></script>
-  <script src="app.js?v=5.9.6.3"></script>
+  <script src="firebase.js?v=5.9.6.4"></script>
+  <script src="app.js?v=5.9.6.4"></script>
 
   <script>
     if ('serviceWorker' in navigator) {
