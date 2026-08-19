@@ -1,10 +1,10 @@
-const CACHE_NAME = 'atlas-v5-9-6-2';
+const CACHE_NAME = 'atlas-v5-9-6-3';
 const APP_SHELL = [
   './',
   './index.html',
-  './style.css?v=5.9.6.2',
-  './app.js?v=5.9.6.2',
-  './firebase.js?v=5.9.6.2',
+  './style.css?v=5.9.6.3',
+  './app.js?v=5.9.6.3',
+  './firebase.js?v=5.9.6.3',
   './manifest.webmanifest',
   './offline.html',
   './icons/apple-touch-icon.png',

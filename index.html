@@ -12,7 +12,7 @@
   <meta name="format-detection" content="telephone=no" />
   <link rel="manifest" href="manifest.webmanifest?v=5810-market-identity-1" />
   <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=5810-market-identity-1" />
-  <link rel="stylesheet" href="style.css?v=5.9.6.2" />
+  <link rel="stylesheet" href="style.css?v=5.9.6.3" />
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
@@ -58,6 +58,7 @@
           <div class="wealthAsOf" id="homeWealthAsOf">Kein offizieller Stichtag</div>
           <div class="netWorthChange mutedValue" id="homeNetWorthChange">Performance folgt nach Einrichtung deiner Vermögenskonten.</div>
         </div>
+        <div id="homeTaxLine" class="homeTaxLine"><span>Gebundene Steuerreserve</span><b id="homeTaxReserve">0 €</b></div>
         <div class="allocationStrip" aria-label="Vermögensaufteilung">
           <div><span>ALPHA</span><b id="homeAlpha">–</b></div><div><span>BETA</span><b id="homeBeta">–</b></div><div><span>RESERVE</span><b id="homeReserve">–</b></div><div><span>CASH / ASSETS</span><b id="homeCashAssets">–</b></div>
         </div>
@@ -77,6 +78,7 @@
           <div><span>Alpha</span><section><b id="wealthAlpha">–</b><small id="wealthAlphaMeta">–</small></section></div>
           <div><span>Assets</span><section><b id="wealthAssets">–</b><small id="wealthAssetsMeta">–</small></section></div>
           <div><span>Cash</span><section><b id="wealthCash">–</b><small id="wealthCashMeta">–</small></section></div>
+          <div><span>Steuertopf</span><section><b id="wealthTax">–</b><small id="wealthTaxMeta">–</small></section></div>
         </div>
         <p class="quietHint">HOME und WEALTH zeigen immer den letzten abgeschlossenen ATLAS-Monatsstand. Neuere, noch offene Daten bleiben vorläufig.</p>
       </section>
@@ -114,6 +116,7 @@
           <div id="reviewAnalysisGrid" class="reviewAnalysisGrid"></div>
           <p id="reviewAnalysisHint" class="reviewAnalysisHint"></p>
           <div id="reviewCategorySummary" class="reviewCategorySummary hidden"></div>
+          <div id="reviewTaxReserve" class="reviewTaxReserve hidden"></div>
           <div id="reviewChecks" class="reviewChecks hidden"></div>
         </div>
 
@@ -177,6 +180,25 @@
           <p id="strategyMsg" class="msg setupMsg"></p>
         </div>
 
+
+        <div class="setupCard">
+          <div class="setupCardHead"><div><div class="label">Steuern</div><h2>Steuerreserve</h2></div><span id="taxAccountStatus" class="setupStatusPill">Steuertopf</span></div>
+          <div class="setupGrid">
+            <label><span>Steuerprofil</span><select id="taxProfile"><option value="private">Privatperson</option></select></label>
+            <label><span>Steuerlicher Wohnsitz</span><select id="taxResidency"><option value="DE">Deutschland</option></select></label>
+            <label><span>Alpha-Steuerreserve</span><div class="inputUnit"><input id="taxAlphaReserve" type="number" min="0" max="100" step="1" value="30" inputmode="decimal"><em>%</em></div></label>
+            <label class="taxToggleLabel"><span>Reserve aktiv</span><input id="taxEnabled" type="checkbox" checked></label>
+          </div>
+          <div class="setupChoiceRow">
+            <div><span>Alpha</span><b>monatlich realisierte Gewinne</b></div>
+            <div><span>Beta</span><b>nur steuerrelevante Ereignisse</b></div>
+            <div><span>Edelmetalle</span><b>keine pauschale Reserve</b></div>
+          </div>
+          <p class="setupHint">ATLAS bildet hier bewusst eine Liquiditätsreserve. Der Betrag ist keine endgültige Steuerberechnung. Sobald du ein separates Bankkonto eröffnet hast, füge es unten mit der Funktion „TAX · Steuertopf“ hinzu.</p>
+          <button id="btnSaveTax" class="primary setupSaveBtn" type="button">Steuerstrategie speichern</button>
+          <p id="taxMsg" class="msg setupMsg"></p>
+        </div>
+
         <div class="setupCard">
           <div class="setupCardHead"><div><div class="label">Konten</div><h2>Deine Finanzwelt</h2></div><button id="btnToggleAccountForm" class="secondary setupInlineBtn" type="button">+ Konto hinzufügen</button></div>
           <div id="accountList" class="setupAccountList"></div>
@@ -184,7 +206,7 @@
             <div class="setupGrid">
               <label><span>Kontoname</span><input id="accountName" placeholder="z. B. Girokonto"></label>
               <label><span>Anbieter</span><input id="accountProvider" placeholder="z. B. Smartbroker+"></label>
-              <label><span>Funktion</span><select id="accountRole"><option value="CASH">CASH</option><option value="RESERVE">RESERVE</option><option value="ALPHA">ALPHA</option><option value="BETA">BETA</option><option value="ASSET">ASSET</option></select></label>
+              <label><span>Funktion</span><select id="accountRole"><option value="CASH">CASH</option><option value="RESERVE">RESERVE</option><option value="ALPHA">ALPHA</option><option value="BETA">BETA</option><option value="ASSET">ASSET</option><option value="TAX">TAX · Steuertopf</option></select></label>
               <label><span>Aktualisierung</span><select id="accountFrequency"><option value="monthly">Monatlich</option><option value="annual">Jährlich</option><option value="manual">Manuell</option></select></label>
               <label><span>Auszüge pro Monat</span><div class="inputUnit"><input id="accountExpectedStatements" type="number" min="1" max="10" step="1" value="1" inputmode="numeric"><em>PDF</em></div></label>
               <label><span>Erkennung (optional)</span><input id="accountIdentifier" placeholder="IBAN / Depotnr. – letzte Stellen"></label>
@@ -439,8 +461,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="firebase.js?v=5.9.6.2"></script>
-  <script src="app.js?v=5.9.6.2"></script>
+  <script src="firebase.js?v=5.9.6.3"></script>
+  <script src="app.js?v=5.9.6.3"></script>
 
   <script>
     if ('serviceWorker' in navigator) {
