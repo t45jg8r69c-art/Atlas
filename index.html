@@ -12,7 +12,7 @@
   <meta name="format-detection" content="telephone=no" />
   <link rel="manifest" href="manifest.webmanifest?v=5810-market-identity-1" />
   <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=5810-market-identity-1" />
-  <link rel="stylesheet" href="style.css?v=5.9.6.1" />
+  <link rel="stylesheet" href="style.css?v=5.9.6.2" />
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
@@ -55,6 +55,7 @@
         <div class="wealthHero">
           <div class="label">Gesamtvermögen</div>
           <div class="netWorthValue" id="homeNetWorth">Noch nicht eingerichtet</div>
+          <div class="wealthAsOf" id="homeWealthAsOf">Kein offizieller Stichtag</div>
           <div class="netWorthChange mutedValue" id="homeNetWorthChange">Performance folgt nach Einrichtung deiner Vermögenskonten.</div>
         </div>
         <div class="allocationStrip" aria-label="Vermögensaufteilung">
@@ -69,11 +70,15 @@
       <section id="wealth" class="screen wealthScreen">
         <button class="atlasBackButton" data-atlas-back type="button">← Zurück</button>
         <div class="wealthTopline"><div><div class="label">Vermögen</div><h1>Wealth</h1></div></div>
-        <div class="wealthHero compactHero"><div class="label">Gesamtvermögen</div><div class="netWorthValue" id="wealthNetWorth">Noch nicht eingerichtet</div></div>
+        <div class="wealthHero compactHero"><div class="label">Gesamtvermögen</div><div class="netWorthValue" id="wealthNetWorth">Noch nicht eingerichtet</div><div class="wealthAsOf" id="wealthAsOf">Kein offizieller Stichtag</div></div>
         <div class="wealthList">
-          <div><span>Beta</span><b id="wealthBeta">–</b></div><div><span>Reserve</span><b id="wealthReserve">–</b></div><div><span>Alpha</span><b id="wealthAlpha">–</b></div><div><span>Assets</span><b id="wealthAssets">–</b></div><div><span>Cash</span><b id="wealthCash">–</b></div>
+          <div><span>Beta</span><section><b id="wealthBeta">–</b><small id="wealthBetaMeta">–</small></section></div>
+          <div><span>Reserve</span><section><b id="wealthReserve">–</b><small id="wealthReserveMeta">–</small></section></div>
+          <div><span>Alpha</span><section><b id="wealthAlpha">–</b><small id="wealthAlphaMeta">–</small></section></div>
+          <div><span>Assets</span><section><b id="wealthAssets">–</b><small id="wealthAssetsMeta">–</small></section></div>
+          <div><span>Cash</span><section><b id="wealthCash">–</b><small id="wealthCashMeta">–</small></section></div>
         </div>
-        <p class="quietHint">Konten, Regeln und PDF-Import werden anschließend an diese reduzierte Übersicht angebunden.</p>
+        <p class="quietHint">HOME und WEALTH zeigen immer den letzten abgeschlossenen ATLAS-Monatsstand. Neuere, noch offene Daten bleiben vorläufig.</p>
       </section>
 
       <section id="alpha" class="screen wealthScreen">
@@ -434,8 +439,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="firebase.js?v=5.9.6.1"></script>
-  <script src="app.js?v=5.9.6.1"></script>
+  <script src="firebase.js?v=5.9.6.2"></script>
+  <script src="app.js?v=5.9.6.2"></script>
 
   <script>
     if ('serviceWorker' in navigator) {
@@ -445,5 +450,18 @@
       });
     }
   </script>
+
+  <div id="monthlyReminderModal" class="atlasReminderModal" role="dialog" aria-modal="true" aria-labelledby="monthlyReminderTitle">
+    <div class="atlasReminderBox">
+      <div class="label">Monatswechsel</div>
+      <h2 id="monthlyReminderTitle">Zeit für deinen ATLAS Review</h2>
+      <p>Lade die Kontoauszüge für <b id="monthlyReminderMonth">den letzten Monat</b> hoch. Danach sagt dir ATLAS, wie viel Geld nach deinen Regeln in Reserve, Beta, Edelmetalle oder Alpha fließen soll.</p>
+      <div class="atlasReminderActions">
+        <button id="btnMonthlyReminderLater" class="secondary" type="button">Später</button>
+        <button id="btnMonthlyReminderOpen" class="primary" type="button">Auszüge hochladen</button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

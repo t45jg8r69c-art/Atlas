@@ -1131,3 +1131,14 @@ body{
 .reviewStatementFile button{border:0;background:transparent;color:var(--muted);font-size:11px;cursor:pointer;padding:5px}
 .reviewStatementFile button:hover{color:var(--text)}
 @media(max-width:700px){.reviewAccountRow.multiStatement{display:block}.reviewAccountRow.multiStatement .reviewAccountActions{margin-top:10px;justify-content:space-between}.reviewStatementFile b{max-width:210px}}
+
+.wealthAsOf{margin-top:7px;color:var(--gold);font-size:12px;letter-spacing:.03em}
+.wealthList>div section{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.wealthList>div section small{font-size:10px;color:var(--muted);font-weight:400}
+.atlasReminderModal{position:fixed;inset:0;z-index:9999;background:rgba(2,9,18,.78);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;padding:20px}
+.atlasReminderModal.show{display:flex}
+.atlasReminderBox{width:min(560px,100%);background:var(--card);border:1px solid rgba(218,174,77,.55);border-radius:20px;padding:26px;box-shadow:0 24px 80px rgba(0,0,0,.45)}
+.atlasReminderBox h2{font-size:26px;margin:7px 0 10px}
+.atlasReminderBox p{color:var(--muted);line-height:1.6;margin:0}
+.atlasReminderActions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
+@media(max-width:700px){.wealthList>div section{align-items:flex-end;max-width:62%}.wealthList>div section small{text-align:right}.atlasReminderActions{display:grid;grid-template-columns:1fr 1fr}.atlasReminderActions button{width:100%}}
